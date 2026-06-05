@@ -16,6 +16,40 @@ function localDateStr(d) {
   return `${y}-${m}-${day}`;
 }
 
+function parseLocalDate(value) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [y, m, d] = value.split('-').map(Number);
+  const parsed = new Date(y, m - 1, d);
+  if (parsed.getFullYear() !== y || parsed.getMonth() !== m - 1 || parsed.getDate() !== d) return null;
+  return parsed;
+}
+
+function isDateValue(value) {
+  return !!parseLocalDate(value);
+}
+
+function firstOfMonth(d) {
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+
+function addDays(d, days) {
+  const next = new Date(d);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function addMonths(d, months) {
+  return new Date(d.getFullYear(), d.getMonth() + months, 1);
+}
+
+function normalizeRange(from, to) {
+  const today = localDateStr(new Date());
+  let start = isDateValue(from) ? from : today;
+  let end = isDateValue(to) ? to : start;
+  if (start > end) [start, end] = [end, start];
+  return { from: start, to: end };
+}
+
 // Convert date label from API to display label.
 // With tz_offset, bucketing is already in local time — return as-is.
 function utcToLocalLabel(s) {
@@ -37,7 +71,8 @@ const I18N = {
     gran_1m: '1 min', gran_30m: '30 min', gran_1h: '1 hour', gran_6h: '6 hours', gran_12h: '12 hours', gran_1d: '1 day', gran_1w: '1 week', gran_1M: '1 month',
     model: 'Model', calls: 'Calls', allSources: 'All Sources', claudeCode: 'Claude Code', codex: 'Codex', openClaw: 'OpenClaw', openCode: 'OpenCode', kiro: 'Kiro CLI', pi: 'Pi',
     filterProject: 'Filter by project...', justNow: 'just now', mAgo: 'm ago', hAgo: 'h ago', dAgo: 'd ago',
-    noSessions: 'No sessions found in this period.', unitMin: 'min', unitSec: 'sec'
+    noSessions: 'No sessions found in this period.', unitMin: 'min', unitSec: 'sec',
+    apply: 'Apply', previousMonth: 'Previous month', nextMonth: 'Next month', dateRange: 'Date range'
   },
   zh: {
     title: '使用分析', to: '至', totalCost: '总费用', totalTokens: '总 Tokens',
@@ -52,13 +87,15 @@ const I18N = {
     gran_1m: '1 分钟', gran_30m: '30 分钟', gran_1h: '1 小时', gran_6h: '6 小时', gran_12h: '12 小时', gran_1d: '1 天', gran_1w: '1 周', gran_1M: '1 个月',
     model: '模型', calls: '调用次数', allSources: '全部来源', claudeCode: 'Claude Code', codex: 'Codex', openClaw: 'OpenClaw', openCode: 'OpenCode', kiro: 'Kiro CLI', pi: 'Pi',
     filterProject: '按项目筛选...', justNow: '刚刚', mAgo: '分钟前', hAgo: '小时前', dAgo: '天前',
-    noSessions: '当前时间段内暂无会话数据。', unitMin: '分钟', unitSec: '秒'
+    noSessions: '当前时间段内暂无会话数据。', unitMin: '分钟', unitSec: '秒',
+    apply: '应用', previousMonth: '上个月', nextMonth: '下个月', dateRange: '日期范围'
   }
 };
 
 // ── State ──
 const colors = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#ec4899'];
-const PRESETS = ['today', 'thisWeek', 'thisMonth', 'thisYear', 'last3d', 'last7d', 'last30d', 'custom'];
+const RANGE_SHORTCUTS = ['today', 'thisWeek', 'thisMonth', 'thisYear', 'last3d', 'last7d', 'last30d'];
+const PRESETS = [...RANGE_SHORTCUTS, 'custom'];
 const GRANULARITIES = ['1m', '30m', '1h', '6h', '12h', '1d', '1w', '1M'];
 const REFRESH_INTERVALS = [30, 60, 300, 1800, 3600];
 
@@ -83,9 +120,96 @@ let sessionPage = 1;
 const PAGE_SIZE = 20;
 let expandedSessions = new Set(); // Stores opened sid
 let isFetching = false;
+let datePicker = {
+  open: false,
+  viewMonth: null,
+  draftFrom: '',
+  draftTo: '',
+  selectingEnd: false,
+  hoverDate: ''
+};
+
+function eventIncludesElement(e, el) {
+  if (!el) return false;
+  if (typeof e.composedPath === 'function') return e.composedPath().includes(el);
+  return el.contains(e.target);
+}
 
 function t(key) { return (I18N[state.lang] || I18N.en)[key] || key; }
 function persist(key, val) { state[key] = val; localStorage.setItem('au-' + key, val); }
+
+function sameRange(a, b) {
+  return a && b && a.from === b.from && a.to === b.to;
+}
+
+function storeRange(range) {
+  persist('customFrom', range.from);
+  persist('customTo', range.to);
+}
+
+function rangeForPreset(preset) {
+  const now = new Date();
+  const todayStr = localDateStr(now);
+
+  switch (preset) {
+    case 'today':
+      return { from: todayStr, to: todayStr };
+    case 'thisWeek': {
+      const start = new Date(now);
+      start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+      return { from: localDateStr(start), to: todayStr };
+    }
+    case 'thisMonth': {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      return { from: localDateStr(start), to: todayStr };
+    }
+    case 'thisYear':
+      return { from: `${now.getFullYear()}-01-01`, to: todayStr };
+    case 'last3d':
+      return { from: localDateStr(addDays(now, -2)), to: todayStr };
+    case 'last7d':
+      return { from: localDateStr(addDays(now, -6)), to: todayStr };
+    case 'last30d':
+      return { from: localDateStr(addDays(now, -29)), to: todayStr };
+    default:
+      return null;
+  }
+}
+
+function matchingShortcutForRange(range) {
+  return RANGE_SHORTCUTS.find(p => sameRange(range, rangeForPreset(p))) || '';
+}
+
+function matchingPresetForRange(range) {
+  return matchingShortcutForRange(range) || 'custom';
+}
+
+function setPickerDraft(range, opts = {}) {
+  datePicker.draftFrom = range.from;
+  datePicker.draftTo = range.to;
+  datePicker.selectingEnd = false;
+  datePicker.hoverDate = '';
+  if (opts.alignView !== false) datePicker.viewMonth = firstOfMonth(parseLocalDate(range.from));
+}
+
+function setPreset(preset, opts = {}) {
+  const range = rangeForPreset(preset);
+  if (!range) return;
+
+  persist('preset', preset);
+  storeRange(range);
+  setPickerDraft(range, { alignView: opts.alignView });
+  sessionPage = 1;
+
+  if (opts.closePicker) {
+    closeDatePicker();
+  }
+  buildControls();
+  if (opts.refresh !== false) {
+    refresh();
+    applyAutoRefresh();
+  }
+}
 
 function applyTheme() {
   const th = state.theme === 'system' ? (window.matchMedia('(prefers-color-scheme:dark)').matches ? 'dark' : 'light') : state.theme;
@@ -119,17 +243,7 @@ function baseOpt() {
 // ── Time range ──
 function getTimeRange() {
   const now = new Date(); const todayStr = localDateStr(now);
-  switch (state.preset) {
-    case 'today': return { from: todayStr, to: todayStr };
-    case 'thisWeek': { const d = new Date(now); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return { from: localDateStr(d), to: todayStr }; }
-    case 'thisMonth': return { from: todayStr.slice(0, 8) + '01', to: todayStr };
-    case 'thisYear': return { from: todayStr.slice(0, 5) + '01-01', to: todayStr };
-    case 'last3d': { const d = new Date(now); d.setDate(d.getDate() - 2); return { from: localDateStr(d), to: todayStr }; }
-    case 'last7d': { const d = new Date(now); d.setDate(d.getDate() - 6); return { from: localDateStr(d), to: todayStr }; }
-    case 'last30d': { const d = new Date(now); d.setDate(d.getDate() - 29); return { from: localDateStr(d), to: todayStr }; }
-    case 'custom': return { from: state.customFrom || todayStr, to: state.customTo || todayStr };
-    default: return { from: todayStr, to: todayStr };
-  }
+  return rangeForPreset(state.preset) || normalizeRange(state.customFrom || todayStr, state.customTo || state.customFrom || todayStr);
 }
 
 async function api(path, opts) {
@@ -382,6 +496,11 @@ function renderSessionTable() {
 
 // ── DOM-based Row Expansion (No full render) ──
 document.addEventListener('click', e => {
+  const rangeWrap = $('range-control-wrap');
+  if (datePicker.open && rangeWrap && !eventIncludesElement(e, rangeWrap)) {
+    closeDatePicker();
+  }
+
   const expandBtn = e.target.closest('.expand-btn');
   if (expandBtn) {
     const sid = expandBtn.dataset.sid;
@@ -459,6 +578,216 @@ async function fetchAndInjectDetail(sid, isRestore = false) {
   }
 }
 
+// ── Date Range Picker ──
+function selectedDraftRange() {
+  const committed = getTimeRange();
+  if (datePicker.open && isDateValue(datePicker.draftFrom)) {
+    if (isDateValue(datePicker.draftTo)) {
+      return normalizeRange(datePicker.draftFrom, datePicker.draftTo);
+    }
+    return { from: datePicker.draftFrom, to: datePicker.draftFrom };
+  }
+  return committed;
+}
+
+function rangeDisplayLabel(range) {
+  const shortcut = matchingShortcutForRange(range);
+  return shortcut ? t(shortcut) : formatRangeLabel(range.from, range.to);
+}
+
+function renderRangeTrigger() {
+  const trigger = $('date-range-trigger');
+  const label = $('date-range-label');
+  if (!trigger || !label) return;
+
+  const range = selectedDraftRange();
+  const labelText = rangeDisplayLabel(range);
+  label.textContent = labelText;
+  trigger.classList.toggle('open', datePicker.open);
+  trigger.setAttribute('aria-expanded', datePicker.open ? 'true' : 'false');
+  trigger.setAttribute('aria-label', `${t('dateRange')}: ${labelText}`);
+}
+
+function renderDateShortcuts() {
+  const box = $('date-shortcuts');
+  if (!box) return;
+
+  const range = selectedDraftRange();
+  box.innerHTML = RANGE_SHORTCUTS.map(p => {
+    const active = sameRange(range, rangeForPreset(p));
+    return `<button type="button" class="date-shortcut-btn ${active ? 'active' : ''}" data-preset="${p}" aria-pressed="${active ? 'true' : 'false'}">${t(p)}</button>`;
+  }).join('');
+}
+
+function dateLocale() {
+  return state.lang === 'zh' ? 'zh-CN' : 'en-US';
+}
+
+function formatDateLabel(value) {
+  const d = parseLocalDate(value);
+  if (!d) return value || '';
+  return d.toLocaleDateString(dateLocale(), { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function formatMonthLabel(d) {
+  return d.toLocaleDateString(dateLocale(), { year: 'numeric', month: 'long' });
+}
+
+function formatRangeLabel(from, to) {
+  if (from === to) return formatDateLabel(from);
+  if (state.lang === 'zh') return `${formatDateLabel(from)}${t('to')}${formatDateLabel(to)}`;
+  return `${formatDateLabel(from)} ${t('to')} ${formatDateLabel(to)}`;
+}
+
+function committedCustomRange() {
+  return getTimeRange();
+}
+
+function orderedDates(a, b) {
+  return a <= b ? [a, b] : [b, a];
+}
+
+function calendarDayClasses(value, isOutsideMonth) {
+  const classes = ['day-btn'];
+  const today = localDateStr(new Date());
+  const from = isDateValue(datePicker.draftFrom) ? datePicker.draftFrom : '';
+  const to = isDateValue(datePicker.draftTo) ? datePicker.draftTo : '';
+
+  if (isOutsideMonth) classes.push('outside');
+  if (value === today) classes.push('today');
+
+  if (from && datePicker.selectingEnd && isDateValue(datePicker.hoverDate)) {
+    const [start, end] = orderedDates(from, datePicker.hoverDate);
+    if (value >= start && value <= end) classes.push('range-preview');
+    if (start === end && value === start) classes.push('single-day');
+    else {
+      if (value === start) classes.push('range-start');
+      if (value === end) classes.push('range-end');
+    }
+  } else if (from && to) {
+    const [start, end] = orderedDates(from, to);
+    if (value >= start && value <= end) classes.push('in-range');
+    if (start === end && value === start) classes.push('single-day');
+    else {
+      if (value === start) classes.push('range-start');
+      if (value === end) classes.push('range-end');
+    }
+  } else if (from && value === from) {
+    classes.push('single-day');
+  }
+
+  return classes.join(' ');
+}
+
+function renderCalendarMonth(month) {
+  const weekdays = state.lang === 'zh'
+    ? ['一', '二', '三', '四', '五', '六', '日']
+    : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const first = new Date(month.getFullYear(), month.getMonth(), 1);
+  const offset = (first.getDay() + 6) % 7;
+  const gridStart = addDays(first, -offset);
+  let days = '';
+
+  for (let i = 0; i < 42; i++) {
+    const day = addDays(gridStart, i);
+    const value = localDateStr(day);
+    const label = formatDateLabel(value);
+    days += `<button type="button" class="${calendarDayClasses(value, day.getMonth() !== month.getMonth())}" data-date="${value}" aria-label="${esc(label)}" title="${value}">${day.getDate()}</button>`;
+  }
+
+  return `
+    <section class="calendar-month">
+      <div class="calendar-month-title">${esc(formatMonthLabel(month))}</div>
+      <div class="weekday-row">${weekdays.map(w => `<div class="weekday">${w}</div>`).join('')}</div>
+      <div class="day-grid">${days}</div>
+    </section>
+  `;
+}
+
+function renderDatePicker() {
+  const popover = $('date-range-popover');
+  const grid = $('calendar-grid');
+  if (!popover) return;
+
+  renderRangeTrigger();
+  renderDateShortcuts();
+  popover.classList.toggle('open', datePicker.open);
+  popover.setAttribute('aria-label', t('dateRange'));
+  popover.hidden = !datePicker.open;
+  if (datePicker.open) {
+    popover.removeAttribute('inert');
+    popover.removeAttribute('aria-hidden');
+  } else {
+    popover.setAttribute('inert', '');
+    popover.setAttribute('aria-hidden', 'true');
+  }
+  $('calendar-prev').setAttribute('aria-label', t('previousMonth'));
+  $('calendar-next').setAttribute('aria-label', t('nextMonth'));
+
+  if (!datePicker.open) return;
+
+  const committed = committedCustomRange();
+  const draftFrom = isDateValue(datePicker.draftFrom) ? datePicker.draftFrom : committed.from;
+
+  if (!datePicker.viewMonth) {
+    datePicker.viewMonth = firstOfMonth(parseLocalDate(draftFrom));
+  }
+  const nextMonth = addMonths(datePicker.viewMonth, 1);
+  $('calendar-title').textContent = `${formatMonthLabel(datePicker.viewMonth)} - ${formatMonthLabel(nextMonth)}`;
+  if (grid) grid.innerHTML = [datePicker.viewMonth, nextMonth].map(renderCalendarMonth).join('');
+}
+
+function openDatePicker() {
+  const range = getTimeRange();
+  datePicker.open = true;
+  datePicker.viewMonth = firstOfMonth(parseLocalDate(range.from));
+  datePicker.draftFrom = range.from;
+  datePicker.draftTo = range.to;
+  datePicker.selectingEnd = false;
+  datePicker.hoverDate = '';
+  renderDatePicker();
+}
+
+function closeDatePicker() {
+  datePicker.open = false;
+  datePicker.selectingEnd = false;
+  datePicker.hoverDate = '';
+  renderDatePicker();
+}
+
+function commitCustomRange(from, to, opts = {}) {
+  const range = normalizeRange(from, to || from);
+  persist('preset', matchingPresetForRange(range));
+  storeRange(range);
+  setPickerDraft(range, { alignView: opts.alignView });
+  if (opts.close) datePicker.open = false;
+  buildControls();
+  if (opts.refresh !== false) {
+    sessionPage = 1;
+    refresh();
+    applyAutoRefresh();
+  }
+}
+
+function selectCalendarDate(value, isDoubleClick = false) {
+  if (!isDateValue(value)) return;
+  if (isDoubleClick) {
+    commitCustomRange(value, value, { close: true });
+    return;
+  }
+
+  if (!datePicker.selectingEnd || !isDateValue(datePicker.draftFrom)) {
+    datePicker.draftFrom = value;
+    datePicker.draftTo = '';
+    datePicker.selectingEnd = true;
+    datePicker.hoverDate = '';
+    renderDatePicker();
+    return;
+  }
+
+  commitCustomRange(datePicker.draftFrom, value, { close: true });
+}
+
 // ── Auto Refresh ──
 function applyAutoRefresh() {
   if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
@@ -472,6 +801,10 @@ function applyAutoRefresh() {
 
 // ── Init Setup ──
 function buildControls() {
+  if (!PRESETS.includes(state.preset)) persist('preset', 'today');
+  if (state.preset === 'custom') {
+    persist('preset', matchingPresetForRange(getTimeRange()));
+  }
   document.querySelectorAll('[data-i18n]').forEach(el => el.textContent = t(el.dataset.i18n));
 
   const buildOpts = (arr, val, labelFn) => arr.map(v => `<option value="${v}" ${val === v ? 'selected' : ''}>${labelFn(v)}</option>`).join('');
@@ -484,14 +817,7 @@ function buildControls() {
   const SOURCES = [['', 'allSources'], ['claude', 'claudeCode'], ['codex', 'codex'], ['openclaw', 'openClaw'], ['opencode', 'openCode'], ['kiro', 'kiro'], ['pi', 'pi']];
   $('filter-source').innerHTML = SOURCES.map(([v, k]) => `<option value="${v}" ${state.source === v ? 'selected' : ''}>${t(k)}</option>`).join('');
 
-  const bar = $('preset-bar');
-  bar.innerHTML = PRESETS.map(p => `<button class="preset-btn ${state.preset === p ? 'active' : ''}" data-preset="${p}">${t(p)}</button>`).join('');
-
-  $('custom-range-wrap').style.display = state.preset === 'custom' ? 'flex' : 'none';
-  if (state.preset === 'custom') {
-    $('from').value = state.customFrom || localDateStr(new Date());
-    $('to').value = state.customTo || localDateStr(new Date());
-  }
+  renderDatePicker();
   $('filter-project').placeholder = t('filterProject');
 }
 
@@ -501,14 +827,46 @@ $('sel-lang').onchange = e => { persist('lang', e.target.value); buildControls()
 $('sel-granularity').onchange = e => { persist('granularity', e.target.value); refresh(); };
 $('sel-refresh-interval').onchange = e => { persist('refreshInterval', parseInt(e.target.value)); applyAutoRefresh(); };
 
-$('preset-bar').onclick = e => {
-  if (e.target.classList.contains('preset-btn')) {
-    persist('preset', e.target.dataset.preset);
-    buildControls(); refresh(); applyAutoRefresh();
-  }
+$('date-range-trigger').onclick = e => {
+  e.stopPropagation();
+  datePicker.open ? closeDatePicker() : openDatePicker();
 };
-$('from').onchange = e => { persist('customFrom', e.target.value); refresh(); };
-$('to').onchange = e => { persist('customTo', e.target.value); refresh(); };
+$('date-shortcuts').onclick = e => {
+  const btn = e.target.closest('.date-shortcut-btn');
+  if (!btn) return;
+  setPreset(btn.dataset.preset, { closePicker: false });
+};
+$('calendar-prev').onclick = () => {
+  datePicker.viewMonth = addMonths(datePicker.viewMonth || firstOfMonth(parseLocalDate(committedCustomRange().from)), -1);
+  renderDatePicker();
+};
+$('calendar-next').onclick = () => {
+  datePicker.viewMonth = addMonths(datePicker.viewMonth || firstOfMonth(parseLocalDate(committedCustomRange().from)), 1);
+  renderDatePicker();
+};
+$('calendar-apply').onclick = () => {
+  const fallback = localDateStr(new Date());
+  const from = datePicker.draftFrom || committedCustomRange().from || fallback;
+  const to = datePicker.draftTo || from;
+  commitCustomRange(from, to, { close: true });
+};
+$('calendar-grid').onclick = e => {
+  const btn = e.target.closest('.day-btn');
+  if (!btn) return;
+  selectCalendarDate(btn.dataset.date, e.detail >= 2);
+};
+$('calendar-grid').onmouseover = e => {
+  const btn = e.target.closest('.day-btn');
+  if (!btn || !datePicker.selectingEnd || !datePicker.draftFrom) return;
+  if (datePicker.hoverDate === btn.dataset.date) return;
+  datePicker.hoverDate = btn.dataset.date;
+  renderDatePicker();
+};
+$('calendar-grid').onmouseleave = () => {
+  if (!datePicker.hoverDate) return;
+  datePicker.hoverDate = '';
+  renderDatePicker();
+};
 
 $('btn-refresh').onclick = () => { refresh(); applyAutoRefresh(); };
 $('btn-auto-refresh').onclick = () => { persist('autoRefresh', !state.autoRefresh); applyAutoRefresh(); };
@@ -537,6 +895,11 @@ document.querySelectorAll('.sortable').forEach(th => {
 });
 
 window.matchMedia('(prefers-color-scheme:dark)').addEventListener('change', () => { if (state.theme === 'system') applyTheme(); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && datePicker.open) {
+    closeDatePicker();
+  }
+});
 
 // Bootstrap
 applyTheme();

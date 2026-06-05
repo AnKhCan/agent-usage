@@ -64,13 +64,62 @@ select:hover, input[type=date]:hover, input[type=text]:hover, .ctrl-btn:hover { 
 select:focus, input[type=date]:focus, input[type=text]:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-bg); }
 select option { background: var(--select-bg); color: var(--text); }
 
-.preset-bar { display: flex; background: var(--select-bg); border: 1px solid var(--border); border-radius: 8px; padding: 2px; }
-.preset-btn {
-  background: transparent; border: none; color: var(--muted); padding: 6px 12px;
-  border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.2s;
+.date-range-wrap { position: relative; display: flex; align-items: center; }
+.date-range-trigger {
+  background: var(--select-bg); border: 1px solid var(--border); color: var(--text);
+  min-width: 240px; max-width: 360px; height: 34px; padding: 6px 10px 6px 12px; border-radius: 8px;
+  display: inline-flex; align-items: center; justify-content: space-between; gap: 8px;
+  font-size: 13px; font-family: inherit; cursor: pointer; transition: all 0.2s;
 }
-.preset-btn:hover { color: var(--text); }
-.preset-btn.active { background: var(--accent); color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+.date-range-trigger:hover, .date-range-trigger.open { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-bg); }
+.date-range-trigger svg { width: 15px; height: 15px; color: var(--muted); flex: 0 0 auto; }
+.date-range-trigger span { font-feature-settings: "tnum"; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.date-range-trigger .range-caret { width: 14px; height: 14px; transition: transform 0.16s; }
+.date-range-trigger.open .range-caret { transform: rotate(180deg); }
+.date-range-popover {
+  position: absolute; left: 0; top: calc(100% + 8px); width: min(640px, calc(100vw - 32px));
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 24px 70px rgba(0,0,0,0.35); padding: 14px; z-index: 300;
+  opacity: 0; transform: translateY(-4px); pointer-events: none; transition: opacity 0.16s, transform 0.16s;
+}
+.date-range-popover.open { opacity: 1; transform: translateY(0); pointer-events: auto; }
+.date-shortcuts { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--border); }
+.date-shortcut-btn {
+  border: 1px solid var(--border); background: var(--select-bg); color: var(--muted);
+  height: 30px; padding: 0 10px; border-radius: 7px; font-size: 12px; font-weight: 600;
+  font-family: inherit; cursor: pointer; transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.date-shortcut-btn:hover { border-color: var(--accent); color: var(--text); }
+.date-shortcut-btn.active { border-color: var(--accent); background: var(--accent-bg); color: var(--accent); }
+.date-range-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.calendar-title { font-size: 13px; color: var(--muted); font-weight: 600; }
+.calendar-nav {
+  width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--select-bg); color: var(--text); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; transition: all 0.2s;
+}
+.calendar-nav:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-bg); }
+.calendar-nav svg { width: 14px; height: 14px; }
+.calendar-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.calendar-month { min-width: 0; }
+.calendar-month-title { color: var(--text); font-size: 13px; font-weight: 700; margin-bottom: 8px; text-align: center; }
+.weekday-row, .day-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+.weekday { color: var(--muted); font-size: 10px; font-weight: 700; text-align: center; text-transform: uppercase; padding: 4px 0; }
+.day-btn {
+  position: relative; height: 32px; border: 0; border-radius: 8px; background: transparent;
+  color: var(--text); font-size: 12px; font-family: inherit; cursor: pointer;
+  font-feature-settings: "tnum"; transition: color 0.12s, background 0.12s;
+}
+.day-btn.outside { color: var(--muted); color: color-mix(in srgb, var(--muted) 55%, transparent); }
+.day-btn:hover { background: var(--hover); color: var(--text); }
+.day-btn.today { box-shadow: inset 0 0 0 1px var(--accent); }
+.day-btn.in-range, .day-btn.range-preview { background: var(--accent-bg); color: var(--text); border-radius: 0; }
+.day-btn.range-start, .day-btn.range-end, .day-btn.single-day {
+  background: var(--accent); color: #fff; font-weight: 700; border-radius: 8px;
+}
+.day-btn.range-start:not(.single-day) { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.day-btn.range-end:not(.single-day) { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.date-range-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 
 .separator { width: 1px; height: 24px; background: var(--border); margin: 0 4px; }
 .ctrl-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
@@ -239,7 +288,9 @@ td:nth-child(2) { max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
   .top-bar-header { flex-direction: column; align-items: stretch; }
   .top-bar-controls { flex-direction: column; align-items: stretch; }
   .ctrl-actions { margin-left: 0; }
-  .preset-bar { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 4px; }
+  .date-range-wrap, .date-range-trigger { width: 100%; max-width: none; }
+  .date-range-popover { left: 0; width: 100%; }
+  .calendar-grid { grid-template-columns: 1fr; }
   .separator { display: none; }
 }
 @media (max-width: 520px) { .stats { grid-template-columns: 1fr; } }
@@ -252,9 +303,28 @@ td:nth-child(2) { max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
     <div class="top-bar-header">
       <h1><div class="logo-dot"></div><span>agent-usage</span></h1>
       <div class="top-bar-controls">
-        <div class="preset-bar" id="preset-bar"></div>
-        <div style="display:flex; gap:8px; align-items:center;" id="custom-range-wrap">
-          <input type="date" id="from"> <span style="color:var(--muted)" data-i18n="to">-</span> <input type="date" id="to">
+        <div class="date-range-wrap" id="range-control-wrap">
+          <button type="button" class="date-range-trigger" id="date-range-trigger" aria-haspopup="dialog" aria-expanded="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v4"></path><path d="M16 2v4"></path><path d="M3 10h18"></path><rect x="3" y="4" width="18" height="18" rx="2"></rect></svg>
+            <span id="date-range-label"></span>
+            <svg class="range-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+          </button>
+          <div class="date-range-popover" id="date-range-popover" role="dialog" aria-label="Date range picker" hidden inert aria-hidden="true">
+            <div class="date-shortcuts" id="date-shortcuts"></div>
+            <div class="date-range-head">
+              <button type="button" class="calendar-nav" id="calendar-prev" aria-label="Previous month">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>
+              </button>
+              <div class="calendar-title" id="calendar-title"></div>
+              <button type="button" class="calendar-nav" id="calendar-next" aria-label="Next month">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg>
+              </button>
+            </div>
+            <div class="calendar-grid" id="calendar-grid"></div>
+            <div class="date-range-footer">
+              <button type="button" class="ctrl-btn primary" id="calendar-apply" data-i18n="apply">Apply</button>
+            </div>
+          </div>
         </div>
         <div class="separator"></div>
         <select id="sel-granularity"></select>

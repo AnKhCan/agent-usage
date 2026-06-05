@@ -3,6 +3,9 @@
 *.db-wal
 config.local.yaml
 /agent-usage
+/dist/
+/.gocache/
+/.gomodcache/
 devobs
 data/
 
