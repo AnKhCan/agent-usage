@@ -5,7 +5,7 @@ const esc = s => {
 };
 const $ = id => document.getElementById(id);
 const fmt = n => n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : String(n);
-const fmtCost = n => n >= 1 ? '$' + n.toFixed(2) : '$' + n.toFixed(4);
+const fmtCost = n => n === 0 ? '$0.00' : n >= 1 ? '$' + n.toFixed(2) : '$' + n.toFixed(4);
 
 // ── Timezone helpers ──
 // Format a Date as YYYY-MM-DD in local timezone (avoids toISOString which returns UTC)
@@ -134,6 +134,9 @@ function eventIncludesElement(e, el) {
   if (typeof e.composedPath === 'function') return e.composedPath().includes(el);
   return el.contains(e.target);
 }
+
+const ENHANCED_SELECT_IDS = ['sel-granularity', 'filter-source', 'filter-model', 'sel-refresh-interval', 'sel-theme', 'sel-lang'];
+const customSelects = new Map();
 
 function t(key) { return (I18N[state.lang] || I18N.en)[key] || key; }
 function persist(key, val) { state[key] = val; localStorage.setItem('au-' + key, val); }
@@ -500,6 +503,9 @@ document.addEventListener('click', e => {
   if (datePicker.open && rangeWrap && !eventIncludesElement(e, rangeWrap)) {
     closeDatePicker();
   }
+  if (!e.target.closest('.custom-select-wrap')) {
+    closeCustomSelects();
+  }
 
   const expandBtn = e.target.closest('.expand-btn');
   if (expandBtn) {
@@ -799,6 +805,160 @@ function applyAutoRefresh() {
   }
 }
 
+// ── Custom Selects ──
+function customSelectLabel(select) {
+  const selected = select.options[select.selectedIndex];
+  return selected ? selected.textContent : '';
+}
+
+function selectedOptionIndex(select) {
+  return Math.max(0, Array.from(select.options).findIndex(o => o.value === select.value));
+}
+
+function setCustomSelectOpen(item, open) {
+  item.wrap.classList.toggle('open', open);
+  item.button.setAttribute('aria-expanded', open ? 'true' : 'false');
+  item.menu.hidden = !open;
+  if (open) {
+    item.activeIndex = selectedOptionIndex(item.select);
+    syncCustomSelect(item.select);
+    const active = item.menu.querySelector('.custom-select-option.active');
+    if (active) active.scrollIntoView({ block: 'nearest' });
+  }
+}
+
+function closeCustomSelects(exceptId = '') {
+  customSelects.forEach((item, id) => {
+    if (id !== exceptId) setCustomSelectOpen(item, false);
+  });
+}
+
+function commitCustomSelectValue(select, value) {
+  if (select.value === value) {
+    closeCustomSelects();
+    return;
+  }
+  select.value = value;
+  select.dispatchEvent(new Event('change', { bubbles: true }));
+  closeCustomSelects();
+}
+
+function syncCustomSelect(select) {
+  const item = customSelects.get(select.id);
+  if (!item) return;
+
+  const options = Array.from(select.options);
+  const selectedIndex = selectedOptionIndex(select);
+  item.value.textContent = customSelectLabel(select);
+  item.button.title = customSelectLabel(select);
+  item.button.setAttribute('aria-label', select.title || customSelectLabel(select));
+  if (!item.wrap.classList.contains('open')) item.activeIndex = selectedIndex;
+  item.activeIndex = Math.min(Math.max(item.activeIndex, 0), Math.max(options.length - 1, 0));
+
+  item.menu.innerHTML = options.map((option, index) => {
+    const selected = option.value === select.value;
+    const active = index === item.activeIndex;
+    return `<button type="button" class="custom-select-option${selected ? ' selected' : ''}${active ? ' active' : ''}" role="option" aria-selected="${selected ? 'true' : 'false'}" data-value="${esc(option.value)}">
+      <span class="custom-select-option-label">${esc(option.textContent)}</span>
+      <svg class="custom-select-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m20 6-11 11-5-5"></path></svg>
+    </button>`;
+  }).join('');
+}
+
+function moveCustomSelectActive(item, delta) {
+  const count = item.select.options.length;
+  if (!count) return;
+  item.activeIndex = (item.activeIndex + delta + count) % count;
+  syncCustomSelect(item.select);
+  const active = item.menu.querySelector('.custom-select-option.active');
+  if (active) active.scrollIntoView({ block: 'nearest' });
+}
+
+function enhanceSelect(select) {
+  if (!select || customSelects.has(select.id)) return;
+
+  select.classList.add('enhanced-native-select');
+  select.tabIndex = -1;
+  select.setAttribute('aria-hidden', 'true');
+  const wrap = document.createElement('div');
+  wrap.className = 'custom-select-wrap';
+  wrap.dataset.selectId = select.id;
+  select.parentNode.insertBefore(wrap, select);
+  wrap.appendChild(select);
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'custom-select-trigger';
+  button.setAttribute('aria-haspopup', 'listbox');
+  button.setAttribute('aria-expanded', 'false');
+  button.innerHTML = `<span class="custom-select-value"></span><svg class="custom-select-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>`;
+
+  const menu = document.createElement('div');
+  menu.className = 'custom-select-menu';
+  menu.setAttribute('role', 'listbox');
+  menu.hidden = true;
+
+  wrap.appendChild(button);
+  wrap.appendChild(menu);
+
+  const item = { select, wrap, button, menu, value: button.querySelector('.custom-select-value'), activeIndex: selectedOptionIndex(select) };
+  customSelects.set(select.id, item);
+
+  button.addEventListener('click', e => {
+    e.stopPropagation();
+    const nextOpen = !wrap.classList.contains('open');
+    closeCustomSelects(select.id);
+    setCustomSelectOpen(item, nextOpen);
+  });
+
+  button.addEventListener('keydown', e => {
+    if (['ArrowDown', 'ArrowUp', 'Home', 'End', 'Enter', ' '].includes(e.key)) e.preventDefault();
+    if (!wrap.classList.contains('open') && ['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(e.key)) {
+      closeCustomSelects(select.id);
+      setCustomSelectOpen(item, true);
+      return;
+    }
+    if (e.key === 'ArrowDown') moveCustomSelectActive(item, 1);
+    if (e.key === 'ArrowUp') moveCustomSelectActive(item, -1);
+    if (e.key === 'Home') { item.activeIndex = 0; syncCustomSelect(select); }
+    if (e.key === 'End') { item.activeIndex = select.options.length - 1; syncCustomSelect(select); }
+    if ((e.key === 'Enter' || e.key === ' ') && wrap.classList.contains('open')) {
+      const option = select.options[item.activeIndex];
+      if (option) commitCustomSelectValue(select, option.value);
+    }
+    if (e.key === 'Escape') setCustomSelectOpen(item, false);
+  });
+
+  menu.addEventListener('click', e => {
+    const option = e.target.closest('.custom-select-option');
+    if (!option) return;
+    commitCustomSelectValue(select, option.dataset.value);
+    button.focus();
+  });
+
+  menu.addEventListener('mousemove', e => {
+    const option = e.target.closest('.custom-select-option');
+    if (!option) return;
+    const buttons = Array.from(menu.querySelectorAll('.custom-select-option'));
+    const index = buttons.indexOf(option);
+    if (index >= 0 && index !== item.activeIndex) {
+      item.activeIndex = index;
+      syncCustomSelect(select);
+    }
+  });
+
+  select.addEventListener('change', () => syncCustomSelect(select));
+  syncCustomSelect(select);
+}
+
+function enhanceSelects() {
+  ENHANCED_SELECT_IDS.forEach(id => enhanceSelect($(id)));
+}
+
+function syncCustomSelects() {
+  customSelects.forEach(item => syncCustomSelect(item.select));
+}
+
 // ── Init Setup ──
 function buildControls() {
   if (!PRESETS.includes(state.preset)) persist('preset', 'today');
@@ -819,6 +979,7 @@ function buildControls() {
 
   renderDatePicker();
   $('filter-project').placeholder = t('filterProject');
+  syncCustomSelects();
 }
 
 // ── Events Binding ──
@@ -881,8 +1042,9 @@ function updateModelFilter(costModel) {
   const prev = state.model;
   if (prev && !models.includes(prev)) { persist('model', ''); }
   sel.innerHTML = `<option value="">All Models</option>` + models.map(m =>
-    `<option value="${m}" ${state.model === m ? 'selected' : ''}>${m}</option>`
+    `<option value="${esc(m)}" ${state.model === m ? 'selected' : ''}>${esc(m)}</option>`
   ).join('');
+  syncCustomSelect(sel);
 }
 
 document.querySelectorAll('.sortable').forEach(th => {
@@ -899,11 +1061,15 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && datePicker.open) {
     closeDatePicker();
   }
+  if (e.key === 'Escape') {
+    closeCustomSelects();
+  }
 });
 
 // Bootstrap
 applyTheme();
 initCharts();
+enhanceSelects();
 buildControls();
 applyAutoRefresh();
 refresh();
