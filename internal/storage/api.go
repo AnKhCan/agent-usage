@@ -2,6 +2,7 @@ package storage
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -39,9 +40,9 @@ type CostByModel struct {
 
 // TimeSeriesPoint represents a single data point in a daily cost time series.
 type TimeSeriesPoint struct {
-	Date   string  `json:"date"`
-	Value  float64 `json:"value"`
-	Model  string  `json:"model,omitempty"`
+	Date  string  `json:"date"`
+	Value float64 `json:"value"`
+	Model string  `json:"model,omitempty"`
 }
 
 // TokenTimeSeriesPoint represents daily token usage broken down by category.
@@ -64,6 +65,15 @@ type SessionInfo struct {
 	Prompts   int     `json:"prompts"`
 	TotalCost float64 `json:"total_cost"`
 	Tokens    int64   `json:"tokens"`
+}
+
+// SessionPage represents one page of aggregated sessions plus pagination metadata.
+type SessionPage struct {
+	Items      []SessionInfo `json:"items"`
+	Page       int           `json:"page"`
+	PageSize   int           `json:"page_size"`
+	Total      int           `json:"total"`
+	TotalPages int           `json:"total_pages"`
 }
 
 // GetDashboardStats returns aggregate cost, token, session, and prompt counts
@@ -279,6 +289,120 @@ func (d *DB) GetSessions(from, to time.Time, source, model string) ([]SessionInf
 			return nil, err
 		}
 		result = append(result, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func normalizePage(page, pageSize int) (int, int) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 20
+	}
+	if pageSize > 200 {
+		pageSize = 200
+	}
+	return page, pageSize
+}
+
+func sessionSortExpr(sort string) string {
+	switch sort {
+	case "source":
+		return "LOWER(s.source)"
+	case "project":
+		return "LOWER(COALESCE(NULLIF(s.project,''), s.cwd))"
+	case "git_branch":
+		return "LOWER(s.git_branch)"
+	case "prompts":
+		return "prompts"
+	case "tokens":
+		return "tokens"
+	case "total_cost":
+		return "total_cost"
+	default:
+		return "s.start_time"
+	}
+}
+
+// GetSessionsPage returns one page of sessions with server-side project filtering,
+// sorting, and pagination. It preserves GetSessions for compatibility with older API clients.
+func (d *DB) GetSessionsPage(from, to time.Time, source, model, project, sort, dir string, page, pageSize int) (*SessionPage, error) {
+	page, pageSize = normalizePage(page, pageSize)
+
+	sf, sa := sourceFilter(source)
+	mf, ma := modelFilter(model)
+	filter := sf + mf
+	baseArgs := append([]interface{}{from, to}, sa...)
+	baseArgs = append(baseArgs, ma...)
+	promptArgs := append([]interface{}{from, to}, sa...)
+	args := append([]interface{}{}, baseArgs...)
+	args = append(args, promptArgs...)
+
+	projectClause := ""
+	project = strings.TrimSpace(strings.ToLower(project))
+	if project != "" {
+		projectClause = " AND (LOWER(s.project) LIKE ? OR LOWER(s.cwd) LIKE ?)"
+		like := "%" + project + "%"
+		args = append(args, like, like)
+	}
+
+	baseQuery := ` FROM sessions s
+		LEFT JOIN (SELECT session_id, SUM(cost_usd) as cost, SUM(input_tokens+cache_read_input_tokens+cache_creation_input_tokens+output_tokens) as tokens
+			FROM usage_records WHERE timestamp BETWEEN ? AND ?` + filter + ` GROUP BY session_id) u
+		ON s.session_id = u.session_id
+		LEFT JOIN (SELECT session_id, COUNT(*) as prompts
+			FROM prompt_events WHERE timestamp BETWEEN ? AND ?` + sf + ` GROUP BY session_id) p
+		ON s.session_id = p.session_id
+		WHERE u.session_id IS NOT NULL` + projectClause
+
+	var total int
+	if err := d.db.QueryRow(`SELECT COUNT(*)`+baseQuery, args...).Scan(&total); err != nil {
+		return nil, err
+	}
+
+	totalPages := 1
+	if total > 0 {
+		totalPages = (total + pageSize - 1) / pageSize
+	}
+	if page > totalPages {
+		page = totalPages
+	}
+
+	direction := "DESC"
+	if strings.EqualFold(dir, "asc") {
+		direction = "ASC"
+	}
+	orderExpr := sessionSortExpr(sort)
+	offset := (page - 1) * pageSize
+
+	queryArgs := append([]interface{}{}, args...)
+	queryArgs = append(queryArgs, pageSize, offset)
+	rows, err := d.db.Query(`SELECT s.session_id, s.source, s.project, s.cwd, s.git_branch,
+		COALESCE(s.start_time,''), COALESCE(p.prompts,0) as prompts,
+		COALESCE(u.cost,0) as total_cost, COALESCE(u.tokens,0) as tokens`+
+		baseQuery+` ORDER BY `+orderExpr+` `+direction+`, s.session_id ASC LIMIT ? OFFSET ?`, queryArgs...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := &SessionPage{
+		Items:      []SessionInfo{},
+		Page:       page,
+		PageSize:   pageSize,
+		Total:      total,
+		TotalPages: totalPages,
+	}
+	for rows.Next() {
+		var s SessionInfo
+		if err := rows.Scan(&s.SessionID, &s.Source, &s.Project, &s.CWD, &s.GitBranch, &s.StartTime, &s.Prompts, &s.TotalCost, &s.Tokens); err != nil {
+			return nil, err
+		}
+		result.Items = append(result.Items, s)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

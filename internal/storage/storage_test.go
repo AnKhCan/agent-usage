@@ -345,6 +345,76 @@ func TestGetSessions(t *testing.T) {
 	}
 }
 
+func TestGetSessionsPage(t *testing.T) {
+	db := tempDB(t)
+	base := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	sessions := []*SessionRecord{
+		{Source: "claude", SessionID: "sess-1", Project: "alpha", CWD: "/work/alpha", GitBranch: "main", StartTime: base.Add(1 * time.Hour)},
+		{Source: "claude", SessionID: "sess-2", Project: "beta", CWD: "/work/special-path", GitBranch: "dev", StartTime: base.Add(2 * time.Hour)},
+		{Source: "claude", SessionID: "sess-3", Project: "gamma", CWD: "/work/gamma", GitBranch: "main", StartTime: base.Add(3 * time.Hour)},
+	}
+	for _, s := range sessions {
+		if err := db.UpsertSession(s); err != nil {
+			t.Fatalf("UpsertSession: %v", err)
+		}
+	}
+
+	records := []*UsageRecord{
+		{Source: "claude", SessionID: "sess-1", Model: "model-a", InputTokens: 100, OutputTokens: 50, CostUSD: 1, Timestamp: base.Add(1 * time.Hour)},
+		{Source: "claude", SessionID: "sess-2", Model: "model-a", InputTokens: 200, OutputTokens: 50, CostUSD: 3, Timestamp: base.Add(2 * time.Hour)},
+		{Source: "claude", SessionID: "sess-3", Model: "model-a", InputTokens: 300, OutputTokens: 50, CostUSD: 2, Timestamp: base.Add(3 * time.Hour)},
+	}
+	if err := db.InsertUsageBatch(records); err != nil {
+		t.Fatalf("InsertUsageBatch: %v", err)
+	}
+
+	prompts := []*PromptEvent{
+		{Source: "claude", SessionID: "sess-1", Timestamp: base.Add(1 * time.Hour)},
+		{Source: "claude", SessionID: "sess-2", Timestamp: base.Add(2 * time.Hour)},
+		{Source: "claude", SessionID: "sess-2", Timestamp: base.Add(2*time.Hour + time.Minute)},
+		{Source: "claude", SessionID: "sess-3", Timestamp: base.Add(3 * time.Hour)},
+	}
+	if err := db.InsertPromptBatch(prompts); err != nil {
+		t.Fatalf("InsertPromptBatch: %v", err)
+	}
+
+	from := base
+	to := base.Add(4 * time.Hour)
+	page, err := db.GetSessionsPage(from, to, "", "", "", "total_cost", "desc", 1, 2)
+	if err != nil {
+		t.Fatalf("GetSessionsPage: %v", err)
+	}
+	if page.Total != 3 || page.TotalPages != 2 || page.Page != 1 || page.PageSize != 2 {
+		t.Fatalf("unexpected page metadata: %+v", page)
+	}
+	if len(page.Items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(page.Items))
+	}
+	if page.Items[0].SessionID != "sess-2" || page.Items[1].SessionID != "sess-3" {
+		t.Fatalf("expected sessions ordered by cost desc [sess-2 sess-3], got [%s %s]", page.Items[0].SessionID, page.Items[1].SessionID)
+	}
+	if page.Items[0].Prompts != 2 {
+		t.Errorf("expected sess-2 prompts 2, got %d", page.Items[0].Prompts)
+	}
+
+	page, err = db.GetSessionsPage(from, to, "", "", "", "total_cost", "desc", 2, 2)
+	if err != nil {
+		t.Fatalf("GetSessionsPage page 2: %v", err)
+	}
+	if len(page.Items) != 1 || page.Items[0].SessionID != "sess-1" {
+		t.Fatalf("expected page 2 to contain sess-1, got %+v", page.Items)
+	}
+
+	page, err = db.GetSessionsPage(from, to, "", "", "special", "start_time", "desc", 1, 20)
+	if err != nil {
+		t.Fatalf("GetSessionsPage project filter: %v", err)
+	}
+	if page.Total != 1 || len(page.Items) != 1 || page.Items[0].SessionID != "sess-2" {
+		t.Fatalf("expected project/CWD filter to match sess-2, got total=%d items=%+v", page.Total, page.Items)
+	}
+}
+
 func TestGetDashboardStatsCacheHitRate(t *testing.T) {
 	db := tempDB(t)
 	ts := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)

@@ -115,11 +115,14 @@ let state = {
 let autoTimer = null;
 let charts = {};
 let allSessions = [];
+let sessionTotal = 0;
+let sessionTotalPages = 1;
 let sessionSort = { key: 'start_time', dir: 'desc' };
 let sessionPage = 1;
 const PAGE_SIZE = 20;
 let expandedSessions = new Set(); // Stores opened sid
 let isFetching = false;
+let projectFilterTimer = null;
 let datePicker = {
   open: false,
   viewMonth: null,
@@ -251,12 +254,19 @@ function getTimeRange() {
 
 async function api(path, opts) {
   const r = getTimeRange();
-  let q = [`from=${r.from}`, `to=${r.to}`];
-  if (state.granularity) q.push(`granularity=${state.granularity}`);
-  if (state.source) q.push(`source=${state.source}`);
-  if (state.model && !(opts && opts.skipModel)) q.push(`model=${encodeURIComponent(state.model)}`);
-  q.push(`tz_offset=${new Date().getTimezoneOffset()}`);
-  const res = await fetch(`/api/${path}?${q.join('&')}`);
+  const q = new URLSearchParams();
+  q.set('from', r.from);
+  q.set('to', r.to);
+  if (state.granularity) q.set('granularity', state.granularity);
+  if (state.source) q.set('source', state.source);
+  if (state.model && !(opts && opts.skipModel)) q.set('model', state.model);
+  q.set('tz_offset', new Date().getTimezoneOffset());
+  if (opts && opts.params) {
+    Object.entries(opts.params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') q.set(key, value);
+    });
+  }
+  const res = await fetch(`/api/${path}?${q.toString()}`);
   return res.json();
 }
 
@@ -268,6 +278,47 @@ function initCharts() {
   window.addEventListener('resize', () => Object.values(charts).forEach(c => c && c.resize()));
 }
 
+function sessionQueryParams() {
+  const projectInput = $('filter-project');
+  return {
+    page: sessionPage,
+    page_size: PAGE_SIZE,
+    sort: sessionSort.key,
+    dir: sessionSort.dir,
+    project: projectInput ? projectInput.value.trim() : ''
+  };
+}
+
+function applySessionPage(data) {
+  allSessions = (data && data.items) || [];
+  sessionTotal = (data && data.total) || 0;
+  sessionTotalPages = (data && data.total_pages) || 1;
+  sessionPage = (data && data.page) || sessionPage;
+  renderSessionTable();
+}
+
+async function refreshSessionsOnly() {
+  if (isFetching) return;
+  isFetching = true;
+  $('global-loader').classList.add('loading');
+
+  try {
+    const sessions = await api('sessions-page', { params: sessionQueryParams() });
+    applySessionPage(sessions);
+  } finally {
+    isFetching = false;
+    $('global-loader').classList.remove('loading');
+  }
+}
+
+function scheduleSessionRefresh() {
+  if (projectFilterTimer) clearTimeout(projectFilterTimer);
+  projectFilterTimer = setTimeout(() => {
+    projectFilterTimer = null;
+    refreshSessionsOnly();
+  }, 250);
+}
+
 async function refresh() {
   if (isFetching) return;
   isFetching = true;
@@ -276,7 +327,7 @@ async function refresh() {
 
   try {
     const [stats, costModel, costTime, tokensTime, sessions] = await Promise.all([
-      api('stats'), api('cost-by-model', {skipModel: true}), api('cost-over-time'), api('tokens-over-time'), api('sessions')
+      api('stats'), api('cost-by-model', {skipModel: true}), api('cost-over-time'), api('tokens-over-time'), api('sessions-page', { params: sessionQueryParams() })
     ]);
 
     // Update model filter dropdown from cost-by-model results
@@ -398,8 +449,7 @@ async function refresh() {
       ]
     }, true);
 
-    allSessions = sessions || [];
-    renderSessionTable();
+    applySessionPage(sessions);
 
   } finally {
     isFetching = false;
@@ -430,24 +480,14 @@ function fmtLocalTime(ts) {
 
 // ── Session Table Logic ──
 function renderSessionTable() {
-  const projFilter = ($('filter-project').value || '').toLowerCase();
-
-  const filtered = allSessions.filter(s => {
-    if (projFilter && !(s.project || s.cwd || '').toLowerCase().includes(projFilter)) return false;
-    return true;
-  });
-
-  const k = sessionSort.key, dir = sessionSort.dir === 'asc' ? 1 : -1;
-  const sorted = filtered.sort((a, b) => {
-    let va = a[k] || '', vb = b[k] || '';
-    if (typeof va === 'number' || typeof vb === 'number') return ((va || 0) - (vb || 0)) * dir;
-    return String(va).toLowerCase() < String(vb).toLowerCase() ? -dir : 1 * dir;
-  });
-
-  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const page = allSessions;
+  const totalPages = Math.max(1, sessionTotalPages || 1);
+  const total = sessionTotal || 0;
   if (sessionPage > totalPages) sessionPage = totalPages;
   const start = (sessionPage - 1) * PAGE_SIZE;
-  const page = sorted.slice(start, start + PAGE_SIZE);
+  const visibleStart = total > 0 ? start + 1 : 0;
+  const visibleEnd = Math.min(start + page.length, total);
+  const k = sessionSort.key;
 
   // Update headers
   document.querySelectorAll('.sortable').forEach(th => {
@@ -486,11 +526,11 @@ function renderSessionTable() {
   // Pagination UI
   const pag = $('pagination');
   if (totalPages <= 1) {
-    pag.innerHTML = filtered.length > 0 ? `<span class="page-info">${filtered.length} total</span>` : '';
+    pag.innerHTML = total > 0 ? `<span class="page-info">${total} total</span>` : '';
   } else {
-    let html = `<span class="page-info">${start + 1}-${Math.min(start + PAGE_SIZE, sorted.length)} of ${sorted.length}</span>`;
+    let html = `<span class="page-info">${visibleStart}-${visibleEnd} of ${total}</span>`;
     html += `<button class="page-btn" data-page="${sessionPage - 1}" ${sessionPage === 1 ? 'disabled' : ''}>&larr;</button>`;
-    const pStart = Math.max(1, sessionPage - 2), pEnd = Math.min(totalPages, pStart + 4);
+    const pStart = Math.max(1, Math.min(sessionPage - 2, totalPages - 4)), pEnd = Math.min(totalPages, pStart + 4);
     for (let i = pStart; i <= pEnd; i++) html += `<button class="page-btn ${i === sessionPage ? 'active' : ''}" data-page="${i}">${i}</button>`;
     html += `<button class="page-btn" data-page="${sessionPage + 1}" ${sessionPage === totalPages ? 'disabled' : ''}>&rarr;</button>`;
     pag.innerHTML = html;
@@ -531,7 +571,7 @@ document.addEventListener('click', e => {
   const pageBtn = e.target.closest('.page-btn:not(:disabled)');
   if (pageBtn && !pageBtn.classList.contains('active')) {
     sessionPage = parseInt(pageBtn.dataset.page);
-    renderSessionTable();
+    refreshSessionsOnly();
   }
 });
 
@@ -959,12 +999,26 @@ function syncCustomSelects() {
   customSelects.forEach(item => syncCustomSelect(item.select));
 }
 
+function normalizeDateState() {
+  if (!PRESETS.includes(state.preset)) persist('preset', 'today');
+
+  let range = getTimeRange();
+  if (state.preset === 'custom') {
+    persist('preset', matchingPresetForRange(range));
+    range = getTimeRange();
+  }
+
+  if (state.preset !== 'custom' || !isDateValue(state.customFrom) || !isDateValue(state.customTo)) {
+    storeRange(range);
+  }
+  if (!datePicker.open) {
+    setPickerDraft(range);
+  }
+}
+
 // ── Init Setup ──
 function buildControls() {
-  if (!PRESETS.includes(state.preset)) persist('preset', 'today');
-  if (state.preset === 'custom') {
-    persist('preset', matchingPresetForRange(getTimeRange()));
-  }
+  normalizeDateState();
   document.querySelectorAll('[data-i18n]').forEach(el => el.textContent = t(el.dataset.i18n));
 
   const buildOpts = (arr, val, labelFn) => arr.map(v => `<option value="${v}" ${val === v ? 'selected' : ''}>${labelFn(v)}</option>`).join('');
@@ -1032,9 +1086,9 @@ $('calendar-grid').onmouseleave = () => {
 $('btn-refresh').onclick = () => { refresh(); applyAutoRefresh(); };
 $('btn-auto-refresh').onclick = () => { persist('autoRefresh', !state.autoRefresh); applyAutoRefresh(); };
 
-$('filter-source').onchange = e => { persist('source', e.target.value); persist('model', ''); refresh(); };
-$('filter-model').onchange = e => { persist('model', e.target.value); refresh(); };
-$('filter-project').oninput = () => { sessionPage = 1; renderSessionTable(); };
+$('filter-source').onchange = e => { persist('source', e.target.value); persist('model', ''); sessionPage = 1; refresh(); };
+$('filter-model').onchange = e => { persist('model', e.target.value); sessionPage = 1; refresh(); };
+$('filter-project').oninput = () => { sessionPage = 1; scheduleSessionRefresh(); };
 
 function updateModelFilter(costModel) {
   const models = costModel.map(d => d.model).filter(Boolean);
@@ -1052,7 +1106,8 @@ document.querySelectorAll('.sortable').forEach(th => {
     const k = th.dataset.sort;
     if (sessionSort.key === k) sessionSort.dir = sessionSort.dir === 'asc' ? 'desc' : 'asc';
     else { sessionSort.key = k; sessionSort.dir = ['start_time', 'total_cost', 'tokens', 'prompts'].includes(k) ? 'desc' : 'asc'; }
-    renderSessionTable();
+    sessionPage = 1;
+    refreshSessionsOnly();
   };
 });
 

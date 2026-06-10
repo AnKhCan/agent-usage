@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/briqt/agent-usage/internal/storage"
@@ -38,6 +39,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/cost-over-time", s.handleCostOverTime)
 	mux.HandleFunc("/api/tokens-over-time", s.handleTokensOverTime)
 	mux.HandleFunc("/api/sessions", s.handleSessions)
+	mux.HandleFunc("/api/sessions-page", s.handleSessionsPage)
 	mux.HandleFunc("/api/session-detail", s.handleSessionDetail)
 
 	log.Printf("server: listening on %s", s.addr)
@@ -103,6 +105,18 @@ func badRequest(w http.ResponseWriter, err error) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
 	json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+}
+
+func positiveIntQuery(r *http.Request, name string, defaultValue int) (int, error) {
+	raw := r.URL.Query().Get(name)
+	if raw == "" {
+		return defaultValue, nil
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 1 {
+		return 0, fmt.Errorf("invalid %q value %q: expected a positive integer", name, raw)
+	}
+	return n, nil
 }
 
 func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
@@ -179,6 +193,35 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 	source := r.URL.Query().Get("source")
 	model := r.URL.Query().Get("model")
 	data, err := s.db.GetSessions(from, to, source, model)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	writeJSON(w, data)
+}
+
+func (s *Server) handleSessionsPage(w http.ResponseWriter, r *http.Request) {
+	from, to, _, err := s.parseTimeRange(r)
+	if err != nil {
+		badRequest(w, err)
+		return
+	}
+	page, err := positiveIntQuery(r, "page", 1)
+	if err != nil {
+		badRequest(w, err)
+		return
+	}
+	pageSize, err := positiveIntQuery(r, "page_size", 20)
+	if err != nil {
+		badRequest(w, err)
+		return
+	}
+	source := r.URL.Query().Get("source")
+	model := r.URL.Query().Get("model")
+	project := r.URL.Query().Get("project")
+	sort := r.URL.Query().Get("sort")
+	dir := r.URL.Query().Get("dir")
+	data, err := s.db.GetSessionsPage(from, to, source, model, project, sort, dir, page, pageSize)
 	if err != nil {
 		serverError(w, err)
 		return
