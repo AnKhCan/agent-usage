@@ -54,6 +54,23 @@ type TokenTimeSeriesPoint struct {
 	CacheCreate  int64  `json:"cache_create"`
 }
 
+// TrendSeriesPoint represents usage totals for a single trend bucket.
+type TrendSeriesPoint struct {
+	Date     string  `json:"date"`
+	Cost     float64 `json:"cost"`
+	Tokens   int64   `json:"tokens"`
+	Calls    int     `json:"calls"`
+	Sessions int     `json:"sessions"`
+}
+
+// TrendBreakdownValue represents usage totals grouped by one dimension.
+type TrendBreakdownValue struct {
+	Name   string  `json:"name"`
+	Cost   float64 `json:"cost"`
+	Tokens int64   `json:"tokens"`
+	Calls  int     `json:"calls"`
+}
+
 // SessionInfo represents a session with aggregated cost and token totals.
 type SessionInfo struct {
 	SessionID string  `json:"session_id"`
@@ -214,6 +231,80 @@ func (d *DB) GetTokensOverTime(from, to time.Time, granularity, source, model st
 			return nil, err
 		}
 		result = append(result, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// GetTrendSeries returns total cost and token usage grouped by the given granularity.
+func (d *DB) GetTrendSeries(from, to time.Time, granularity, source, model string, tzOffset int) ([]TrendSeriesPoint, error) {
+	expr := granularityExpr(granularity, tzOffset)
+	sf, sa := sourceFilter(source)
+	mf, ma := modelFilter(model)
+	args := append([]interface{}{from, to}, sa...)
+	args = append(args, ma...)
+	filter := sf + mf
+	rows, err := d.db.Query(`SELECT `+expr+` as d,
+		COALESCE(SUM(cost_usd),0) as cost,
+		COALESCE(SUM(input_tokens+cache_read_input_tokens+cache_creation_input_tokens+output_tokens),0) as tokens,
+		COUNT(*) as calls,
+		COUNT(DISTINCT session_id) as sessions
+		FROM usage_records WHERE timestamp BETWEEN ? AND ?`+filter+`
+		GROUP BY d ORDER BY d`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []TrendSeriesPoint
+	for rows.Next() {
+		var p TrendSeriesPoint
+		if err := rows.Scan(&p.Date, &p.Cost, &p.Tokens, &p.Calls, &p.Sessions); err != nil {
+			return nil, err
+		}
+		result = append(result, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// GetTrendBreakdown returns total usage grouped by a safe dimension.
+func (d *DB) GetTrendBreakdown(from, to time.Time, source, model, dimension string) ([]TrendBreakdownValue, error) {
+	var expr string
+	switch dimension {
+	case "source":
+		expr = "source"
+	case "model":
+		expr = "model"
+	default:
+		return nil, fmt.Errorf("unsupported trend breakdown dimension %q", dimension)
+	}
+
+	sf, sa := sourceFilter(source)
+	mf, ma := modelFilter(model)
+	args := append([]interface{}{from, to}, sa...)
+	args = append(args, ma...)
+	filter := sf + mf
+	rows, err := d.db.Query(`SELECT `+expr+` as name,
+		COALESCE(SUM(cost_usd),0) as cost,
+		COALESCE(SUM(input_tokens+cache_read_input_tokens+cache_creation_input_tokens+output_tokens),0) as tokens,
+		COUNT(*) as calls
+		FROM usage_records WHERE timestamp BETWEEN ? AND ?`+filter+`
+		GROUP BY name ORDER BY cost DESC`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []TrendBreakdownValue
+	for rows.Next() {
+		var b TrendBreakdownValue
+		if err := rows.Scan(&b.Name, &b.Cost, &b.Tokens, &b.Calls); err != nil {
+			return nil, err
+		}
+		result = append(result, b)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

@@ -61,6 +61,7 @@ const I18N = {
   en: {
     title: 'Usage Analytics', to: 'to', totalCost: 'Total Cost', totalTokens: 'Total Tokens',
     sessions: 'Sessions', prompts: 'Prompts', apiCalls: 'API Calls', cacheHitRate: 'Cache Hit Rate', costByModel: 'Cost by Model', costOverTime: 'Cost Trend',
+    compare: 'Compare', compare_off: 'Compare Off', compare_elapsed: 'Same Progress', compare_full: 'Full Previous', trendCompare: 'Trend Comparison', currentPeriod: 'Current', previousPeriod: 'Previous', modelMovers: 'Model Changes', sourceMovers: 'Source Changes', noComparisonData: 'No comparison data.',
     tokenUsage: 'Token Usage', dailySessions: 'Daily Sessions', source: 'Source', project: 'Project',
     branch: 'Branch', time: 'Time', tokens: 'Tokens', cost: 'Cost', refresh: 'Refresh',
     sessionLog: 'Session Log',
@@ -77,6 +78,7 @@ const I18N = {
   zh: {
     title: '使用分析', to: '至', totalCost: '总费用', totalTokens: '总 Tokens',
     sessions: '会话数', prompts: 'Prompt 数', apiCalls: 'API 调用数', cacheHitRate: '缓存命中率', costByModel: '模型费用占比', costOverTime: '费用趋势',
+    compare: '对比', compare_off: '关闭对比', compare_elapsed: '相同进度', compare_full: '完整上期', trendCompare: '趋势对比', currentPeriod: '当前周期', previousPeriod: '上一周期', modelMovers: '模型变化', sourceMovers: '来源变化', noComparisonData: '暂无对比数据。',
     tokenUsage: 'Token 用量', dailySessions: '每日会话数', source: '来源', project: '项目',
     branch: '分支', time: '时间', tokens: 'Tokens', cost: '费用', refresh: '刷新',
     sessionLog: '会话记录',
@@ -94,16 +96,22 @@ const I18N = {
 
 // ── State ──
 const colors = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#ec4899'];
+const SOURCE_LABEL_KEYS = { claude: 'claudeCode', codex: 'codex', openclaw: 'openClaw', opencode: 'openCode', kiro: 'kiro', pi: 'pi' };
 const RANGE_SHORTCUTS = ['today', 'thisWeek', 'thisMonth', 'thisYear', 'last3d', 'last7d', 'last30d'];
 const PRESETS = [...RANGE_SHORTCUTS, 'custom'];
 const GRANULARITIES = ['1m', '30m', '1h', '6h', '12h', '1d', '1w', '1M'];
+const COMPARE_MODES = ['off', 'elapsed', 'full'];
 const REFRESH_INTERVALS = [30, 60, 300, 1800, 3600];
+const initialCompareMode = localStorage.getItem('au-compareEnabled') === 'false'
+  ? 'off'
+  : (localStorage.getItem('au-compareMode') || 'elapsed');
 
 let state = {
   lang: localStorage.getItem('au-lang') || (navigator.language.includes('zh') ? 'zh' : 'en'),
   theme: localStorage.getItem('au-theme') || 'system',
   preset: localStorage.getItem('au-preset') || 'today',
   granularity: localStorage.getItem('au-granularity') || '1h',
+  compareMode: initialCompareMode,
   autoRefresh: localStorage.getItem('au-autoRefresh') !== 'false',
   refreshInterval: parseInt(localStorage.getItem('au-refreshInterval')) || 300,
   customFrom: localStorage.getItem('au-customFrom') || '',
@@ -138,11 +146,12 @@ function eventIncludesElement(e, el) {
   return el.contains(e.target);
 }
 
-const ENHANCED_SELECT_IDS = ['sel-granularity', 'filter-source', 'filter-model', 'sel-refresh-interval', 'sel-theme', 'sel-lang'];
+const ENHANCED_SELECT_IDS = ['sel-granularity', 'sel-compare-mode', 'filter-source', 'filter-model', 'sel-refresh-interval', 'sel-theme', 'sel-lang'];
 const customSelects = new Map();
 
 function t(key) { return (I18N[state.lang] || I18N.en)[key] || key; }
 function persist(key, val) { state[key] = val; localStorage.setItem('au-' + key, val); }
+function isCompareEnabled() { return state.compareMode !== 'off'; }
 
 function sameRange(a, b) {
   return a && b && a.from === b.from && a.to === b.to;
@@ -258,6 +267,7 @@ async function api(path, opts) {
   q.set('from', r.from);
   q.set('to', r.to);
   if (state.granularity) q.set('granularity', state.granularity);
+  if (isCompareEnabled()) q.set('compare_mode', state.compareMode);
   if (state.source) q.set('source', state.source);
   if (state.model && !(opts && opts.skipModel)) q.set('model', state.model);
   q.set('tz_offset', new Date().getTimezoneOffset());
@@ -272,6 +282,7 @@ async function api(path, opts) {
 
 // ── Charts & Data Fetching ──
 function initCharts() {
+  charts.compare = echarts.init($('chart-compare'));
   charts.pie = echarts.init($('chart-pie'));
   charts.cost = echarts.init($('chart-cost'));
   charts.tokens = echarts.init($('chart-tokens'));
@@ -319,6 +330,195 @@ function scheduleSessionRefresh() {
   }, 250);
 }
 
+function pctSuffix(metric) {
+  if (!metric || metric.delta_pct === undefined || metric.delta_pct === null || !isFinite(metric.delta_pct)) return '';
+  const v = metric.delta_pct;
+  return ` \uFF5C ${v > 0 ? '+' : ''}${v.toFixed(1)}%`;
+}
+
+function signedFormatted(delta, formatter) {
+  const n = Number(delta) || 0;
+  if (Math.abs(n) < 0.0000001) return formatter(0);
+  return `${n > 0 ? '+' : '-'}${formatter(Math.abs(n))}`;
+}
+
+function formatDelta(metric, kind) {
+  if (!metric) return '';
+  const delta = Number(metric.delta) || 0;
+  if (kind === 'cost') return `${signedFormatted(delta, fmtCost)}${pctSuffix(metric)}`;
+  if (kind === 'cache') return signedFormatted(delta * 100, n => `${n.toFixed(1)}%`);
+  return `${signedFormatted(Math.round(delta), fmt)}${pctSuffix(metric)}`;
+}
+
+function deltaClass(metric, kind) {
+  const delta = Number(metric && metric.delta) || 0;
+  if (Math.abs(delta) < 0.0000001) return 'equal';
+
+  let magnitude;
+  if (kind === 'cache') {
+    magnitude = Math.abs(delta * 100);
+    if (magnitude >= 20) return delta > 0 ? 'increase-3' : 'decrease-3';
+    if (magnitude >= 10) return delta > 0 ? 'increase-2' : 'decrease-2';
+    return delta > 0 ? 'increase-1' : 'decrease-1';
+  }
+
+  if (metric && metric.delta_pct !== undefined && metric.delta_pct !== null && isFinite(metric.delta_pct)) {
+    magnitude = Math.abs(Number(metric.delta_pct) || 0);
+    if (magnitude >= 50) return delta > 0 ? 'increase-3' : 'decrease-3';
+    if (magnitude >= 25) return delta > 0 ? 'increase-2' : 'decrease-2';
+    return delta > 0 ? 'increase-1' : 'decrease-1';
+  }
+
+  return delta > 0 ? 'increase-3' : 'decrease-3';
+}
+
+function renderStatDeltas(compare) {
+  const configs = [
+    ['d-tokens', compare && compare.summary && compare.summary.tokens, 'count'],
+    ['d-cost', compare && compare.summary && compare.summary.cost, 'cost'],
+    ['d-sessions', compare && compare.summary && compare.summary.sessions, 'count'],
+    ['d-prompts', compare && compare.summary && compare.summary.prompts, 'count'],
+    ['d-calls', compare && compare.summary && compare.summary.calls, 'count'],
+    ['d-cache-hit', compare && compare.summary && compare.summary.cache_hit_rate, 'cache'],
+  ];
+
+  configs.forEach(([id, metric, kind]) => {
+    const el = $(id);
+    if (!el) return;
+    if (!isCompareEnabled() || !metric) {
+      el.textContent = '';
+      el.className = 'delta';
+      el.removeAttribute('title');
+      return;
+    }
+    el.textContent = formatDelta(metric, kind);
+    el.className = `delta ${deltaClass(metric, kind)}`;
+    el.title = `${t('previousPeriod')}: ${kind === 'cost' ? fmtCost(metric.previous || 0) : kind === 'cache' ? ((metric.previous || 0) * 100).toFixed(1) + '%' : fmt(Math.round(metric.previous || 0))}`;
+  });
+}
+
+function formatAPIInstant(value) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (isNaN(d)) return value;
+  return d.toLocaleString(dateLocale(), { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function formatAPIRange(range) {
+  if (!range) return '';
+  return `${formatAPIInstant(range.from)} - ${formatAPIInstant(range.to)}`;
+}
+
+function renderTrendBreakdowns(data) {
+  const box = $('trend-breakdowns');
+  if (!box) return;
+  if (!isCompareEnabled() || !data || !data.breakdowns) {
+    box.innerHTML = '';
+    return;
+  }
+
+  const displayName = (name, kind) => kind === 'source' && SOURCE_LABEL_KEYS[name] ? t(SOURCE_LABEL_KEYS[name]) : (name || '-');
+
+  const renderSection = (title, items, kind) => {
+    const visibleItems = (items || []).slice(0, 5);
+    const maxCurrentCost = Math.max(...visibleItems.map(item => Number(item.current_cost) || 0), 0);
+    const rows = visibleItems.map((item, idx) => {
+      const cls = deltaClass({ delta: item.delta_cost || 0, delta_pct: item.delta_cost_pct }, 'cost');
+      const share = maxCurrentCost > 0 ? Math.max(4, Math.min(100, ((Number(item.current_cost) || 0) / maxCurrentCost) * 100)) : 0;
+      const name = displayName(item.name, kind);
+      const deltaText = `${signedFormatted(item.delta_cost || 0, fmtCost)}${pctSuffix({ delta_pct: item.delta_cost_pct })}`;
+      return `<div class="trend-breakdown-row ${cls}" style="--trend-share:${share.toFixed(1)}%;" title="${esc(item.name)}">
+        <div class="trend-breakdown-main">
+          <div class="trend-breakdown-identity">
+            <span class="trend-breakdown-rank">${idx + 1}</span>
+            <span class="trend-breakdown-name">${esc(name)}</span>
+          </div>
+          <span class="trend-breakdown-delta ${cls}">${deltaText}</span>
+        </div>
+        <div class="trend-breakdown-meta">
+          <span>${t('currentPeriod')} <strong>${fmtCost(item.current_cost || 0)}</strong></span>
+          <span>${t('previousPeriod')} ${fmtCost(item.previous_cost || 0)}</span>
+          <span>${t('tokens')} ${fmt(item.current_tokens || 0)}</span>
+          <span>${t('calls')} ${fmt(item.current_calls || 0)}</span>
+        </div>
+        <div class="trend-breakdown-track" aria-hidden="true"><span></span></div>
+      </div>`;
+    }).join('');
+    return `<section class="trend-breakdown-section">
+      <div class="trend-breakdown-title">${title}</div>
+      ${rows || `<div class="trend-breakdown-empty">${t('noComparisonData')}</div>`}
+    </section>`;
+  };
+
+  box.innerHTML = [
+    renderSection(t('modelMovers'), data.breakdowns.models, 'model'),
+    renderSection(t('sourceMovers'), data.breakdowns.sources, 'source')
+  ].join('');
+}
+
+function renderTrendCompare(data) {
+  const card = $('trend-compare-card');
+  const label = $('compare-range-label');
+  if (!card) return;
+
+  if (!isCompareEnabled()) {
+    card.hidden = true;
+    renderStatDeltas(null);
+    renderTrendBreakdowns(null);
+    return;
+  }
+
+  card.hidden = false;
+  const tc = getThemeColors();
+  const points = (data && data.series) || [];
+  const labels = points.map(p => p.label || p.previous_label || '');
+  const current = points.map(p => +(((p.current && p.current.cost) || 0).toFixed(4)));
+  const previous = points.map(p => +(((p.previous && p.previous.cost) || 0).toFixed(4)));
+  const hasData = points.some(p => ((p.current && (p.current.tokens || p.current.cost)) || (p.previous && (p.previous.tokens || p.previous.cost))));
+
+  if (label) {
+    label.textContent = data ? `${t('previousPeriod')}: ${formatAPIRange(data.compare_range)}` : '';
+  }
+
+  charts.compare.setOption({
+    ...baseOpt(),
+    grid: { ...baseOpt().grid, left: 64, right: 34, top: 48, bottom: 36 },
+    graphic: hasData ? { type: 'text', style: { text: '' } } : {
+      type: 'text', left: 'center', top: 'center',
+      style: { text: t('noComparisonData'), fill: tc.muted, fontSize: 14, fontFamily: 'inherit' }
+    },
+    tooltip: {
+      ...baseOpt().tooltip,
+      trigger: 'axis',
+      formatter: params => {
+        const idx = params && params.length ? params[0].dataIndex : 0;
+        const p = points[idx] || {};
+        const c = (p.current && p.current.cost) || 0;
+        const prev = (p.previous && p.previous.cost) || 0;
+        const delta = c - prev;
+        return `<div style="font-weight:700;margin-bottom:6px;">${esc(p.label || '')}</div>
+          <div>${esc(t('currentPeriod'))}: ${fmtCost(c)}</div>
+          <div>${esc(t('previousPeriod'))}${p.previous_label ? ` (${esc(p.previous_label)})` : ''}: ${fmtCost(prev)}</div>
+          <div style="margin-top:4px;color:${delta > 0 ? 'var(--delta-increase-2)' : delta < 0 ? 'var(--delta-decrease-2)' : 'var(--delta-equal)'};">${signedFormatted(delta, fmtCost)}</div>`;
+      }
+    },
+    legend: {
+      top: 0, left: 'center',
+      textStyle: { color: tc.muted, fontSize: 11 },
+      itemGap: 16, itemWidth: 16, itemHeight: 8
+    },
+    xAxis: { type: 'category', data: labels, axisLine: { lineStyle: { color: tc.grid } }, axisLabel: { color: tc.muted } },
+    yAxis: { type: 'value', splitLine: { lineStyle: { color: tc.grid } }, axisLabel: { color: tc.muted, formatter: v => '$' + v } },
+    series: [
+      { name: t('currentPeriod'), type: 'line', smooth: true, symbolSize: 5, showSymbol: labels.length <= 60, data: current, color: '#3b82f6', lineStyle: { width: 3 }, areaStyle: { opacity: 0.08 } },
+      { name: t('previousPeriod'), type: 'line', smooth: true, symbolSize: 5, showSymbol: labels.length <= 60, data: previous, color: '#94a3b8', lineStyle: { width: 2, type: 'dashed' } }
+    ]
+  }, true);
+
+  renderTrendBreakdowns(data);
+  charts.compare.resize();
+}
+
 async function refresh() {
   if (isFetching) return;
   isFetching = true;
@@ -326,8 +526,13 @@ async function refresh() {
   $('global-loader').classList.add('loading');
 
   try {
-    const [stats, costModel, costTime, tokensTime, sessions] = await Promise.all([
-      api('stats'), api('cost-by-model', {skipModel: true}), api('cost-over-time'), api('tokens-over-time'), api('sessions-page', { params: sessionQueryParams() })
+    const [stats, costModel, costTime, tokensTime, sessions, trendCompare] = await Promise.all([
+      api('stats'),
+      api('cost-by-model', {skipModel: true}),
+      api('cost-over-time'),
+      api('tokens-over-time'),
+      api('sessions-page', { params: sessionQueryParams() }),
+      isCompareEnabled() ? api('trends/compare') : Promise.resolve(null)
     ]);
 
     // Update model filter dropdown from cost-by-model results
@@ -339,6 +544,7 @@ async function refresh() {
     $('s-prompts').textContent = stats.total_prompts || 0;
     $('s-calls').textContent = fmt(stats.total_calls || 0);
     $('s-cache-hit').textContent = ((stats.cache_hit_rate || 0) * 100).toFixed(1) + '%';
+    renderStatDeltas(trendCompare);
 
     const tc = getThemeColors();
 
@@ -390,6 +596,8 @@ async function refresh() {
     const dataZoomOpts = [
       { type: 'inside', start: 0, end: 100 }
     ];
+
+    renderTrendCompare(trendCompare);
 
     // Cost Trend
     const costDates = [...new Set((costTime || []).map(d => d.date))].sort().map(utcToLocalLabel);
@@ -845,6 +1053,37 @@ function applyAutoRefresh() {
   }
 }
 
+function renderCompareModeControl() {
+  const card = $('trend-compare-card');
+  if (card) card.hidden = !isCompareEnabled();
+  const modeSelect = $('sel-compare-mode');
+  if (!modeSelect) return;
+  modeSelect.value = state.compareMode;
+  syncCustomSelect(modeSelect);
+}
+
+function measureSelectText(select, text) {
+  const canvas = measureSelectText.canvas || (measureSelectText.canvas = document.createElement('canvas'));
+  const ctx = canvas.getContext('2d');
+  const wrap = select && select.closest('.custom-select-wrap');
+  const trigger = wrap && wrap.querySelector('.custom-select-trigger');
+  const cs = getComputedStyle(trigger || document.body);
+  ctx.font = `${cs.fontWeight || 500} ${cs.fontSize || '13px'} ${cs.fontFamily || 'sans-serif'}`;
+  return ctx.measureText(text || '').width;
+}
+
+function updateModelSelectWidth() {
+  const select = $('filter-model');
+  if (!select) return;
+  const wrap = select.closest('.custom-select-wrap');
+  if (!wrap) return;
+  const maxTextWidth = Array.from(select.options).reduce((max, option) => {
+    return Math.max(max, measureSelectText(select, option.textContent || ''));
+  }, 0);
+  const width = Math.min(260, Math.max(124, Math.ceil(maxTextWidth + 48)));
+  wrap.style.setProperty('--model-select-width', `${width}px`);
+}
+
 // ── Custom Selects ──
 function customSelectLabel(select) {
   const selected = select.options[select.selectedIndex];
@@ -1001,6 +1240,7 @@ function syncCustomSelects() {
 
 function normalizeDateState() {
   if (!PRESETS.includes(state.preset)) persist('preset', 'today');
+  if (!COMPARE_MODES.includes(state.compareMode)) persist('compareMode', 'elapsed');
 
   let range = getTimeRange();
   if (state.preset === 'custom') {
@@ -1026,20 +1266,33 @@ function buildControls() {
   $('sel-theme').innerHTML = buildOpts(['system', 'light', 'dark'], state.theme, t);
   $('sel-lang').innerHTML = `<option value="en" ${state.lang === 'en' ? 'selected' : ''}>EN</option><option value="zh" ${state.lang === 'zh' ? 'selected' : ''}>ZH</option>`;
   $('sel-granularity').innerHTML = buildOpts(GRANULARITIES, state.granularity, v => t('gran_' + v));
+  $('sel-compare-mode').innerHTML = buildOpts(COMPARE_MODES, state.compareMode, v => t('compare_' + v));
   $('sel-refresh-interval').innerHTML = buildOpts(REFRESH_INTERVALS, state.refreshInterval, v => v >= 60 ? (v / 60) + ' ' + t('unitMin') : v + ' ' + t('unitSec'));
 
   const SOURCES = [['', 'allSources'], ['claude', 'claudeCode'], ['codex', 'codex'], ['openclaw', 'openClaw'], ['opencode', 'openCode'], ['kiro', 'kiro'], ['pi', 'pi']];
   $('filter-source').innerHTML = SOURCES.map(([v, k]) => `<option value="${v}" ${state.source === v ? 'selected' : ''}>${t(k)}</option>`).join('');
 
   renderDatePicker();
+  renderCompareModeControl();
   $('filter-project').placeholder = t('filterProject');
   syncCustomSelects();
+  updateModelSelectWidth();
 }
 
 // ── Events Binding ──
 $('sel-theme').onchange = e => { persist('theme', e.target.value); applyTheme(); };
 $('sel-lang').onchange = e => { persist('lang', e.target.value); buildControls(); refresh(); applyAutoRefresh(); };
 $('sel-granularity').onchange = e => { persist('granularity', e.target.value); refresh(); };
+$('sel-compare-mode').onchange = e => {
+  persist('compareMode', e.target.value);
+  localStorage.setItem('au-compareEnabled', isCompareEnabled() ? 'true' : 'false');
+  renderCompareModeControl();
+  if (!isCompareEnabled()) {
+    renderStatDeltas(null);
+    renderTrendBreakdowns(null);
+  }
+  refresh();
+};
 $('sel-refresh-interval').onchange = e => { persist('refreshInterval', parseInt(e.target.value)); applyAutoRefresh(); };
 
 $('date-range-trigger').onclick = e => {
@@ -1085,7 +1338,6 @@ $('calendar-grid').onmouseleave = () => {
 
 $('btn-refresh').onclick = () => { refresh(); applyAutoRefresh(); };
 $('btn-auto-refresh').onclick = () => { persist('autoRefresh', !state.autoRefresh); applyAutoRefresh(); };
-
 $('filter-source').onchange = e => { persist('source', e.target.value); persist('model', ''); sessionPage = 1; refresh(); };
 $('filter-model').onchange = e => { persist('model', e.target.value); sessionPage = 1; refresh(); };
 $('filter-project').oninput = () => { sessionPage = 1; scheduleSessionRefresh(); };
@@ -1099,6 +1351,7 @@ function updateModelFilter(costModel) {
     `<option value="${esc(m)}" ${state.model === m ? 'selected' : ''}>${esc(m)}</option>`
   ).join('');
   syncCustomSelect(sel);
+  updateModelSelectWidth();
 }
 
 document.querySelectorAll('.sortable').forEach(th => {

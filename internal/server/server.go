@@ -38,6 +38,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/cost-by-model", s.handleCostByModel)
 	mux.HandleFunc("/api/cost-over-time", s.handleCostOverTime)
 	mux.HandleFunc("/api/tokens-over-time", s.handleTokensOverTime)
+	mux.HandleFunc("/api/trends/compare", s.handleTrendCompare)
 	mux.HandleFunc("/api/sessions", s.handleSessions)
 	mux.HandleFunc("/api/sessions-page", s.handleSessionsPage)
 	mux.HandleFunc("/api/session-detail", s.handleSessionDetail)

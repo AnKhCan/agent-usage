@@ -299,6 +299,50 @@ func TestGetCostOverTimeWithTimezone(t *testing.T) {
 	}
 }
 
+func TestGetTrendSeriesAndBreakdown(t *testing.T) {
+	db := tempDB(t)
+	base := time.Date(2025, 1, 1, 10, 0, 0, 0, time.UTC)
+
+	records := []*UsageRecord{
+		{Source: "claude", SessionID: "s1", Model: "model-a", InputTokens: 100, OutputTokens: 50, CostUSD: 1, Timestamp: base},
+		{Source: "claude", SessionID: "s2", Model: "model-b", InputTokens: 200, OutputTokens: 100, CacheReadInputTokens: 50, CostUSD: 3, Timestamp: base.Add(time.Hour)},
+		{Source: "codex", SessionID: "s3", Model: "model-a", InputTokens: 100, OutputTokens: 100, CostUSD: 2, Timestamp: base.Add(25 * time.Hour)},
+	}
+	if err := db.InsertUsageBatch(records); err != nil {
+		t.Fatalf("InsertUsageBatch: %v", err)
+	}
+
+	series, err := db.GetTrendSeries(base.Add(-time.Hour), base.Add(2*time.Hour), "1h", "claude", "", 0)
+	if err != nil {
+		t.Fatalf("GetTrendSeries: %v", err)
+	}
+	if len(series) != 2 {
+		t.Fatalf("expected 2 trend points, got %d", len(series))
+	}
+	if series[0].Date != "2025-01-01 10" || series[0].Cost != 1 || series[0].Tokens != 150 || series[0].Calls != 1 || series[0].Sessions != 1 {
+		t.Fatalf("unexpected first trend point: %+v", series[0])
+	}
+	if series[1].Date != "2025-01-01 11" || series[1].Cost != 3 || series[1].Tokens != 350 || series[1].Calls != 1 || series[1].Sessions != 1 {
+		t.Fatalf("unexpected second trend point: %+v", series[1])
+	}
+
+	models, err := db.GetTrendBreakdown(base.Add(-time.Hour), base.Add(2*time.Hour), "claude", "", "model")
+	if err != nil {
+		t.Fatalf("GetTrendBreakdown model: %v", err)
+	}
+	if len(models) != 2 || models[0].Name != "model-b" || models[0].Cost != 3 || models[0].Tokens != 350 {
+		t.Fatalf("unexpected model breakdown: %+v", models)
+	}
+
+	sources, err := db.GetTrendBreakdown(base.Add(-time.Hour), base.Add(26*time.Hour), "", "model-a", "source")
+	if err != nil {
+		t.Fatalf("GetTrendBreakdown source: %v", err)
+	}
+	if len(sources) != 2 || sources[0].Name != "codex" || sources[0].Cost != 2 || sources[1].Name != "claude" {
+		t.Fatalf("unexpected source breakdown: %+v", sources)
+	}
+}
+
 func TestGetSessions(t *testing.T) {
 	db := tempDB(t)
 	ts := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
