@@ -48,10 +48,13 @@ body {
   padding: 8px 0;
 }
 .top-bar-header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.top-bar-header h1 { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 6px; white-space: nowrap; margin-right: 4px; }
-.top-bar-header h1 .logo-dot { width: 8px; height: 8px; background: var(--accent); border-radius: 50%; box-shadow: 0 0 8px var(--accent); }
-.top-bar-header h1 span { color: var(--text); }
-.top-bar-header h1 .sub { display: none; }
+.app-brand {
+  width: 34px; height: 34px; flex: 0 0 34px; margin-right: 2px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--select-bg); box-shadow: var(--shadow);
+}
+.app-brand svg { width: 22px; height: 22px; display: block; color: #2b65e8; }
 .top-bar-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex: 1; }
 select, input[type=date], input[type=text], .ctrl-btn {
   background: var(--select-bg); border: 1px solid var(--border); color: var(--text);
@@ -357,6 +360,7 @@ td:nth-child(2) { max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
 }
 @media (max-width: 768px) {
   .top-bar-header { flex-direction: column; align-items: stretch; }
+  .app-brand { align-self: flex-start; }
   .top-bar-controls { flex-direction: column; align-items: stretch; }
   .top-bar-controls > .custom-select-wrap,
   .ctrl-actions .custom-select-wrap { width: 100%; max-width: none; }
@@ -376,7 +380,12 @@ td:nth-child(2) { max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
 <div class="app-container">
   <div class="top-bar">
     <div class="top-bar-header">
-      <h1><div class="logo-dot"></div><span>agent-usage</span></h1>
+      <div class="app-brand" role="img" aria-label="agent-usage">
+        <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+          <path d="M870.4 12.8H153.6A140.9024 140.9024 0 0 0 12.8 153.6v716.8A140.9024 140.9024 0 0 0 153.6 1011.2h504.32a38.4 38.4 0 0 0 0-76.8H153.6c-35.2768 0-64-28.7232-64-64V153.6c0-35.2768 28.7232-64 64-64h716.8c35.2768 0 64 28.7232 64 64v716.8c0 35.2768-28.7232 64-64 64h-11.4688a38.4 38.4 0 0 0 0 76.8H870.4A140.9024 140.9024 0 0 0 1011.2 870.4V153.6A140.9024 140.9024 0 0 0 870.4 12.8z" fill="currentColor"/>
+          <path d="M256 371.2a38.4 38.4 0 0 0-38.4 38.4v409.6a38.4 38.4 0 0 0 76.8 0V409.6A38.4 38.4 0 0 0 256 371.2zM473.6 256v512a38.4 38.4 0 0 0 76.8 0V256a38.4 38.4 0 0 0-76.8 0zM768 576a38.4 38.4 0 0 0-38.4 38.4v204.8a38.4 38.4 0 0 0 76.8 0v-204.8a38.4 38.4 0 0 0-38.4-38.4zM257.024 217.6h-0.512c-21.1968 0-38.144 17.2032-38.144 38.4s17.4592 38.4 38.656 38.4a38.4 38.4 0 0 0 0-76.8z" fill="currentColor"/>
+        </svg>
+      </div>
       <div class="top-bar-controls">
         <div class="date-range-wrap" id="range-control-wrap">
           <button type="button" class="date-range-trigger" id="date-range-trigger" aria-haspopup="dialog" aria-expanded="false">
