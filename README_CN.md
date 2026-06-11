@@ -17,7 +17,7 @@
 ## 特性
 
 - 📁 **本地文件解析** —— 直接读取 Claude Code、Codex CLI、OpenClaw、Pi 的会话文件、OpenCode 的 SQLite 数据库和 Kiro CLI 的会话文件
-- 💰 **自动费用计算** —— 从 [litellm](https://github.com/BerriAI/litellm) 获取模型价格，价格更新后自动回填历史记录
+- 💰 **自动费用计算** —— 从 [litellm](https://github.com/BerriAI/litellm) 缓存模型价格，并支持给已使用但缺失价格的模型手动设置价格
 - 🗄️ **SQLite 存储** —— 单文件、零运维、数据可修正
 - 📊 **Web 仪表板** —— 暗色主题 UI，ECharts 图表：费用分布、token 趋势、会话列表
 - 🔄 **增量扫描** —— 监听新会话，自动去重
@@ -97,7 +97,9 @@ storage:
   path: "./agent-usage.db"
 
 pricing:
-  sync_interval: 1h  # 从 GitHub 获取价格；如失败请设置 HTTPS_PROXY 环境变量
+  sync_interval: 1h
+  source_url: "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
+  cache_path: "./data/pricing/model_prices_and_context_window.json"
 ```
 
 配置文件搜索顺序：`--config` 参数 > `/etc/agent-usage/config.yaml` > `./config.yaml`。
@@ -153,6 +155,7 @@ Web 仪表板提供：
 - **费用趋势** —— 按模型堆叠柱状图，颜色映射一致
 - **模型费用占比** —— 环形图，带百分比标签
 - **会话列表** —— 可排序、可筛选，展开查看模型明细
+- **模型价格** —— 右下角入口展示已使用但未匹配价格的模型，并支持手动覆盖
 - **深色/浅色主题** —— 跟随系统，支持手动切换
 - **国际化** —— 中英文
 - **时区处理** —— 所有时间戳以 UTC 存储；前端根据浏览器时区自动转换日期选择器、图表 X 轴标签和会话时间显示
@@ -191,16 +194,16 @@ agent-usage
 
 ## 费用计算
 
-价格从 [litellm 模型价格数据库](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json) 获取并存储在本地。
+价格从 [litellm 模型价格数据库](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json) 下载并缓存到本地，同时写入 SQLite。手动覆盖价格单独存储，优先级高于同步价格。
 
 ```
-费用 = (输入 - 缓存读取 - 缓存创建) × 输入价格
+费用 = 输入 × 输入价格
      + 缓存创建 × 缓存创建价格
      + 缓存读取 × 缓存读取价格
      + 输出 × 输出价格
 ```
 
-价格更新后，历史记录会自动回填。
+价格更新或手动覆盖变化后，历史记录会自动回填。
 
 ## API 接口
 
@@ -214,6 +217,11 @@ agent-usage
 | `GET /api/tokens-over-time` | Token 用量时序（支持 `granularity`） |
 | `GET /api/sessions` | 会话列表及费用/token 汇总 |
 | `GET /api/session-detail?session_id=ID` | 单个会话的模型明细 |
+| `GET /api/pricing/missing` | 已使用但没有有效价格的模型 |
+| `GET /api/pricing/overrides` | 手动价格覆盖列表 |
+| `PUT /api/pricing/overrides/{model}` | 为已使用且缺失价格的模型设置手动价格 |
+| `DELETE /api/pricing/overrides/{model}` | 删除手动价格覆盖 |
+| `POST /api/pricing/sync` | 下载/缓存价格并重算费用 |
 
 日期格式错误或日期范围倒置时返回 `400` JSON 错误，包含具体原因。
 

@@ -11,10 +11,10 @@ import (
 
 // Config holds the top-level application configuration.
 type Config struct {
-	Server  ServerConfig  `yaml:"server"`
+	Server     ServerConfig     `yaml:"server"`
 	Collectors CollectorConfigs `yaml:"collectors"`
-	Storage StorageConfig `yaml:"storage"`
-	Pricing PricingConfig `yaml:"pricing"`
+	Storage    StorageConfig    `yaml:"storage"`
+	Pricing    PricingConfig    `yaml:"pricing"`
 }
 
 // ServerConfig holds HTTP server settings.
@@ -48,7 +48,11 @@ type StorageConfig struct {
 // PricingConfig holds model pricing sync settings.
 type PricingConfig struct {
 	SyncInterval time.Duration `yaml:"sync_interval"`
+	SourceURL    string        `yaml:"source_url"`
+	CachePath    string        `yaml:"cache_path"`
 }
+
+const DefaultPricingSourceURL = "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
 
 func expandPath(p string) string {
 	if strings.HasPrefix(p, "~/") {
@@ -96,7 +100,11 @@ func DefaultConfig() *Config {
 			},
 		},
 		Storage: StorageConfig{Path: "./agent-usage.db"},
-		Pricing: PricingConfig{SyncInterval: time.Hour},
+		Pricing: PricingConfig{
+			SyncInterval: time.Hour,
+			SourceURL:    DefaultPricingSourceURL,
+			CachePath:    "./model_prices_and_context_window.json",
+		},
 	}
 }
 
@@ -148,5 +156,6 @@ func Load(path string) (*Config, error) {
 		cfg.Collectors.Pi.Paths[i] = expandPath(p)
 	}
 	cfg.Storage.Path = expandPath(cfg.Storage.Path)
+	cfg.Pricing.CachePath = expandPath(cfg.Pricing.CachePath)
 	return cfg, nil
 }

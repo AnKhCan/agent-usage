@@ -132,6 +132,7 @@ function renderTrendBreakdowns(data) {
   if (!box) return;
   if (!isCompareEnabled() || !data || !data.breakdowns) {
     box.innerHTML = '';
+    box.hidden = true;
     return;
   }
 
@@ -139,12 +140,14 @@ function renderTrendBreakdowns(data) {
 
   const renderSection = (title, items, kind) => {
     const visibleItems = (items || []).slice(0, 5);
+    if (visibleItems.length === 0) return '';
     const maxCurrentCost = Math.max(...visibleItems.map(item => Number(item.current_cost) || 0), 0);
     const rows = visibleItems.map((item, idx) => {
       const cls = deltaClass({ delta: item.delta_cost || 0, delta_pct: item.delta_cost_pct }, 'cost');
       const share = maxCurrentCost > 0 ? Math.max(4, Math.min(100, ((Number(item.current_cost) || 0) / maxCurrentCost) * 100)) : 0;
       const name = displayName(item.name, kind);
       const deltaText = `${signedFormatted(item.delta_cost || 0, fmtCost)}${pctSuffix({ delta_pct: item.delta_cost_pct })}`;
+      const metaText = `<span class="trend-period-current">${t('currentPeriod')}</span> ${fmtCost(item.current_cost || 0)} | ${fmt(item.current_tokens || 0)} | ${fmt(item.current_calls || 0)} ↔ <span class="trend-period-previous">${t('previousPeriod')}</span> ${fmtCost(item.previous_cost || 0)} | ${fmt(item.previous_tokens || 0)} | ${fmt(item.previous_calls || 0)}`;
       return `<div class="trend-breakdown-row ${cls}" style="--trend-share:${share.toFixed(1)}%;--row-index:${idx};" title="${esc(item.name)}">
         <div class="trend-breakdown-main">
           <div class="trend-breakdown-identity">
@@ -154,24 +157,23 @@ function renderTrendBreakdowns(data) {
           <span class="trend-breakdown-delta ${cls}">${deltaText}</span>
         </div>
         <div class="trend-breakdown-meta">
-          <span>${t('currentPeriod')} <strong>${fmtCost(item.current_cost || 0)}</strong></span>
-          <span>${t('previousPeriod')} ${fmtCost(item.previous_cost || 0)}</span>
-          <span>${t('tokens')} ${fmt(item.current_tokens || 0)}</span>
-          <span>${t('calls')} ${fmt(item.current_calls || 0)}</span>
+          <span>${metaText}</span>
         </div>
         <div class="trend-breakdown-track" aria-hidden="true"><span></span></div>
       </div>`;
     }).join('');
     return `<section class="trend-breakdown-section">
       <div class="trend-breakdown-title">${title}</div>
-      ${rows || `<div class="trend-breakdown-empty">${t('noComparisonData')}</div>`}
+      ${rows}
     </section>`;
   };
 
-  box.innerHTML = [
+  const sections = [
     renderSection(t('modelMovers'), data.breakdowns.models, 'model'),
     renderSection(t('sourceMovers'), data.breakdowns.sources, 'source')
-  ].join('');
+  ].filter(Boolean);
+  box.hidden = sections.length === 0;
+  box.innerHTML = sections.join('');
 }
 
 function trendPointHasData(p) {
@@ -194,6 +196,19 @@ function renderTrendPeriodControl() {
     btn.classList.toggle('active', active);
     btn.setAttribute('aria-pressed', active ? 'true' : 'false');
   });
+}
+
+function renderTrendChartAvailability(allowed) {
+  const chartBox = $('chart-compare');
+  const notice = $('trend-limit-notice');
+  const toggle = $('trend-period-toggle');
+
+  if (toggle) toggle.hidden = !allowed;
+  if (chartBox) chartBox.hidden = !allowed;
+  if (!notice) return;
+
+  notice.hidden = allowed;
+  notice.textContent = allowed ? '' : t('trendCompareRangeLimit');
 }
 
 function setTrendCompareVisible(visible, opts = {}) {
@@ -242,11 +257,14 @@ function renderTrendCompare(data, opts = {}) {
 
   if (!isCompareEnabled()) {
     setTrendCompareVisible(false, { afterHidden: () => renderTrendBreakdowns(null) });
+    renderTrendChartAvailability(true);
     renderStatDeltas(null);
     return;
   }
 
   setTrendCompareVisible(true);
+  const chartAllowed = isTrendCompareChartAllowed();
+  renderTrendChartAvailability(chartAllowed);
   const tc = getThemeColors();
   const rawPoints = (data && data.series) || [];
   const points = displayTrendPoints(rawPoints);
@@ -259,6 +277,12 @@ function renderTrendCompare(data, opts = {}) {
   if (label) {
     const hiddenText = state.activePeriods && hiddenPeriods > 0 ? ` · ${t('emptyPeriodsHidden')}` : '';
     label.textContent = data ? `${t('previousPeriod')}: ${formatAPIRange(data.compare_range)}${hiddenText}` : '';
+  }
+
+  if (!chartAllowed) {
+    charts.compare.clear();
+    if (opts.updateBreakdowns !== false) renderTrendBreakdowns(data);
+    return;
   }
 
   const animateUpdate = opts.animateUpdate !== false;
@@ -284,10 +308,12 @@ function renderTrendCompare(data, opts = {}) {
         const c = (p.current && p.current.cost) || 0;
         const prev = (p.previous && p.previous.cost) || 0;
         const delta = c - prev;
-        return `<div style="font-weight:700;margin-bottom:6px;">${esc(p.label || '')}</div>
+        const deltaColor = delta > 0 ? 'var(--delta-increase-2)' : delta < 0 ? 'var(--delta-decrease-2)' : 'var(--delta-equal)';
+        const deltaText = delta > 0 ? signedFormatted(delta, fmtCost) : delta < 0 ? signedFormatted(delta, fmtCost) : fmtCost(0);
+        return `<div style="font-weight:700;margin-bottom:6px;">${esc(p.label || '')} ↔ ${esc(p.previous_label || '')}</div>
           <div>${esc(t('currentPeriod'))}: ${fmtCost(c)}</div>
-          <div>${esc(t('previousPeriod'))}${p.previous_label ? ` (${esc(p.previous_label)})` : ''}: ${fmtCost(prev)}</div>
-          <div style="margin-top:4px;color:${delta > 0 ? 'var(--delta-increase-2)' : delta < 0 ? 'var(--delta-decrease-2)' : 'var(--delta-equal)'};">${signedFormatted(delta, fmtCost)}</div>`;
+          <div>${esc(t('previousPeriod'))}: ${fmtCost(prev)}</div>
+          <div style="margin-top:4px;color:${deltaColor};">${deltaText}</div>`;
       }
     },
     legend: {
@@ -447,6 +473,7 @@ async function refresh() {
     }, true);
 
     applySessionPage(sessions);
+    if (typeof updatePricingFab === 'function') updatePricingFab();
 
   } finally {
     isFetching = false;

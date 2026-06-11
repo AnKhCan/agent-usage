@@ -53,12 +53,13 @@ func main() {
 
 	// Sync pricing
 	log.Println("syncing pricing data...")
-	if err := pricing.Sync(db); err != nil {
+	pricingOptions := pricing.SyncOptions{SourceURL: cfg.Pricing.SourceURL, CachePath: cfg.Pricing.CachePath}
+	if err := pricing.Sync(db, pricingOptions); err != nil {
 		log.Printf("pricing sync failed: %v (continuing without pricing)", err)
 	}
 
 	// Calculate costs for existing records
-	recalcCosts(db)
+	recalcAllCosts(db)
 
 	// Collector loop
 	type collectorEntry struct {
@@ -97,14 +98,14 @@ func main() {
 	go func() {
 		ticker := time.NewTicker(cfg.Pricing.SyncInterval)
 		for range ticker.C {
-			pricing.Sync(db)
-			recalcCosts(db)
+			pricing.Sync(db, pricingOptions)
+			recalcAllCosts(db)
 		}
 	}()
 
 	// Start web server
 	addr := fmt.Sprintf("%s:%d", cfg.Server.BindAddress, cfg.Server.Port)
-	srv := server.New(db, addr)
+	srv := server.New(db, addr, pricingOptions)
 	log.Fatal(srv.Start())
 }
 
@@ -114,6 +115,16 @@ func recalcCosts(db *storage.DB) {
 		return
 	}
 	if err := db.RecalcCosts(prices, pricing.CalcCost); err != nil {
+		log.Printf("recalc costs: %v", err)
+	}
+}
+
+func recalcAllCosts(db *storage.DB) {
+	prices, err := db.GetAllPricing()
+	if err != nil {
+		return
+	}
+	if err := db.RecalcAllCosts(prices, pricing.CalcCost); err != nil {
 		log.Printf("recalc costs: %v", err)
 	}
 }

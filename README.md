@@ -17,7 +17,7 @@ Collects local session data from Claude Code, Codex, OpenClaw, OpenCode, Kiro CL
 ## Features
 
 - 📁 **Local file parsing** — reads Claude Code, Codex CLI, OpenClaw, Pi session files, OpenCode SQLite database, and Kiro CLI session files directly
-- 💰 **Automatic cost calculation** — fetches model pricing from [litellm](https://github.com/BerriAI/litellm), supports backfill when prices update
+- 💰 **Automatic cost calculation** — caches model pricing from [litellm](https://github.com/BerriAI/litellm), supports manual prices for used models missing upstream pricing
 - 🗄️ **SQLite storage** — single file, zero ops, data is correctable
 - 📊 **Web dashboard** — dark-themed UI with ECharts: cost breakdown, token trends, session list
 - 🔄 **Incremental scanning** — watches for new sessions, deduplicates automatically
@@ -97,7 +97,9 @@ storage:
   path: "./agent-usage.db"
 
 pricing:
-  sync_interval: 1h  # fetched from GitHub; set HTTPS_PROXY env var if this fails
+  sync_interval: 1h
+  source_url: "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
+  cache_path: "./data/pricing/model_prices_and_context_window.json"
 ```
 
 Config search order: `--config` flag > `/etc/agent-usage/config.yaml` > `./config.yaml`.
@@ -153,6 +155,7 @@ The web dashboard provides:
 - **Cost trend** — stacked bar chart by model with consistent color mapping
 - **Cost by model** — doughnut chart with percentage labels
 - **Session list** — sortable, filterable table with expandable per-model detail
+- **Model pricing** — floating entry for used models that have no matched price, plus manual overrides
 - **Dark/Light theme** — system-aware with manual toggle
 - **i18n** — English and Chinese
 - **Timezone handling** — all timestamps are stored in UTC; the frontend automatically converts to your browser's local timezone for date pickers, chart X-axis labels, and session timestamps
@@ -191,16 +194,16 @@ agent-usage
 
 ## Cost Calculation
 
-Pricing is fetched from [litellm's model price database](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json) and stored locally.
+Pricing is downloaded from [litellm's model price database](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json), cached locally, and stored in SQLite. Manual overrides are stored separately and take precedence over synced prices.
 
 ```
-cost = (input - cache_read - cache_creation) × input_price
+cost = input × input_price
      + cache_creation × cache_creation_price
      + cache_read × cache_read_price
      + output × output_price
 ```
 
-When prices update, historical records are automatically backfilled.
+When prices update or an override changes, historical records are automatically backfilled.
 
 ## API Endpoints
 
@@ -214,6 +217,11 @@ All endpoints accept `from` and `to` (YYYY-MM-DD) query parameters. Optional: `s
 | `GET /api/tokens-over-time` | Token usage time series (supports `granularity`) |
 | `GET /api/sessions` | Session list with cost/token totals |
 | `GET /api/session-detail?session_id=ID` | Per-model breakdown for a session |
+| `GET /api/pricing/missing` | Used models without effective pricing |
+| `GET /api/pricing/overrides` | Manual price overrides |
+| `PUT /api/pricing/overrides/{model}` | Set a manual price for a used model without pricing |
+| `DELETE /api/pricing/overrides/{model}` | Remove a manual price override |
+| `POST /api/pricing/sync` | Download/cache pricing and recalculate costs |
 
 Invalid date formats or reversed date ranges return a `400` JSON error with a descriptive message.
 

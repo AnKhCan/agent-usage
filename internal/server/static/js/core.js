@@ -61,7 +61,7 @@ const I18N = {
   en: {
     title: 'Usage Analytics', to: 'to', totalCost: 'Total Cost', totalTokens: 'Total Tokens',
     sessions: 'Sessions', prompts: 'Prompts', apiCalls: 'API Calls', cacheHitRate: 'Cache Hit Rate', costByModel: 'Cost by Model', costOverTime: 'Cost Trend',
-    compare: 'Compare', compare_off: 'Compare Off', compare_elapsed: 'Same Progress', compare_full: 'Full Previous', trendCompare: 'Trend Comparison', currentPeriod: 'Current', previousPeriod: 'Previous', allPeriods: 'All Periods', activePeriods: 'Active Periods', emptyPeriodsHidden: 'empty periods hidden', modelMovers: 'Model Changes', sourceMovers: 'Source Changes', noComparisonData: 'No comparison data.',
+    compare: 'Compare', compare_off: 'Compare Off', compare_elapsed: 'Same Progress', compare_full: 'Full Previous', trendCompare: 'Trend Comparison', currentPeriod: 'Current', previousPeriod: 'Previous', allPeriods: 'All Periods', activePeriods: 'Active Periods', emptyPeriodsHidden: 'empty periods hidden', modelMovers: 'Model Changes', sourceMovers: 'Source Changes', noComparisonData: 'No comparison data.', trendCompareRangeLimit: 'Trend chart is available for ranges up to 7 days.',
     tokenUsage: 'Token Usage', dailySessions: 'Daily Sessions', source: 'Source', project: 'Project',
     branch: 'Branch', time: 'Time', tokens: 'Tokens', cost: 'Cost', refresh: 'Refresh',
     sessionLog: 'Session Log',
@@ -73,12 +73,16 @@ const I18N = {
     model: 'Model', calls: 'Calls', allSources: 'All Sources', claudeCode: 'Claude Code', codex: 'Codex', openClaw: 'OpenClaw', openCode: 'OpenCode', kiro: 'Kiro CLI', pi: 'Pi',
     filterProject: 'Filter by project...', justNow: 'just now', mAgo: 'm ago', hAgo: 'h ago', dAgo: 'd ago',
     noSessions: 'No sessions found in this period.', unitMin: 'min', unitSec: 'sec',
-    apply: 'Apply', previousMonth: 'Previous month', nextMonth: 'Next month', dateRange: 'Date range'
+    apply: 'Apply', previousMonth: 'Previous month', nextMonth: 'Next month', dateRange: 'Date range',
+    pricingKicker: 'Pricing', pricingTitle: 'Model Prices', syncPrices: 'Sync Prices', backToDashboard: 'Dashboard',
+    manualPrice: 'Manual Price', inputPrice: 'Input ($/1M)', outputPrice: 'Output ($/1M)', cacheReadPrice: 'Cache Read ($/1M)', cacheCreatePrice: 'Cache Write ($/1M)', note: 'Note', cancel: 'Cancel', savePrice: 'Save Price',
+    missingPrices: 'Missing Prices', manualOverrides: 'Manual Overrides', setPrice: 'Set Price', edit: 'Edit', delete: 'Delete', noMissingPrices: 'No missing model prices.', noOverrides: 'No manual overrides.',
+    sourceURL: 'Source URL', cachePath: 'Cache File', lastSync: 'Last Sync', lastDownload: 'Last Download', status: 'Status', never: 'Never', ok: 'OK', syncedModels: 'Synced Models', missing: 'Missing', overrides: 'Overrides', saved: 'Saved', syncFailed: 'Sync failed', saveFailed: 'Save failed', deleteFailed: 'Delete failed'
   },
   zh: {
     title: '使用分析', to: '至', totalCost: '总费用', totalTokens: '总 Tokens',
     sessions: '会话数', prompts: 'Prompt 数', apiCalls: 'API 调用数', cacheHitRate: '缓存命中率', costByModel: '模型费用占比', costOverTime: '费用趋势',
-    compare: '对比', compare_off: '关闭对比', compare_elapsed: '相同进度', compare_full: '完整上期', trendCompare: '趋势对比', currentPeriod: '当前周期', previousPeriod: '上一周期', allPeriods: '全部时段', activePeriods: '活跃时段', emptyPeriodsHidden: '已隐藏无数据时段', modelMovers: '模型变化', sourceMovers: '来源变化', noComparisonData: '暂无对比数据。',
+    compare: '对比', compare_off: '关闭对比', compare_elapsed: '相同进度', compare_full: '完整上期', trendCompare: '趋势对比', currentPeriod: '当前周期', previousPeriod: '上一周期', allPeriods: '全部时段', activePeriods: '活跃时段', emptyPeriodsHidden: '已隐藏无数据时段', modelMovers: '模型变化', sourceMovers: '来源变化', noComparisonData: '暂无对比数据。', trendCompareRangeLimit: '趋势图仅支持 7 天内的范围。',
     tokenUsage: 'Token 用量', dailySessions: '每日会话数', source: '来源', project: '项目',
     branch: '分支', time: '时间', tokens: 'Tokens', cost: '费用', refresh: '刷新',
     sessionLog: '会话记录',
@@ -90,7 +94,11 @@ const I18N = {
     model: '模型', calls: '调用次数', allSources: '全部来源', claudeCode: 'Claude Code', codex: 'Codex', openClaw: 'OpenClaw', openCode: 'OpenCode', kiro: 'Kiro CLI', pi: 'Pi',
     filterProject: '按项目筛选...', justNow: '刚刚', mAgo: '分钟前', hAgo: '小时前', dAgo: '天前',
     noSessions: '当前时间段内暂无会话数据。', unitMin: '分钟', unitSec: '秒',
-    apply: '应用', previousMonth: '上个月', nextMonth: '下个月', dateRange: '日期范围'
+    apply: '应用', previousMonth: '上个月', nextMonth: '下个月', dateRange: '日期范围',
+    pricingKicker: '价格', pricingTitle: '模型价格', syncPrices: '同步价格', backToDashboard: '仪表盘',
+    manualPrice: '手动价格', inputPrice: '输入', outputPrice: '输出', cacheReadPrice: '缓存读取', cacheCreatePrice: '缓存写入', note: '备注', cancel: '取消', savePrice: '保存价格',
+    missingPrices: '缺失价格', manualOverrides: '手动覆盖', setPrice: '设置价格', edit: '编辑', delete: '删除', noMissingPrices: '暂无缺失价格的模型。', noOverrides: '暂无手动覆盖。',
+    sourceURL: '来源地址', cachePath: '缓存文件', lastSync: '最近同步', lastDownload: '最近下载', status: '状态', never: '从未', ok: '正常', syncedModels: '已同步模型', missing: '缺失', overrides: '覆盖', saved: '已保存', syncFailed: '同步失败', saveFailed: '保存失败', deleteFailed: '删除失败'
   }
 };
 
@@ -104,6 +112,7 @@ const COMPARE_MODES = ['off', 'elapsed', 'full'];
 const REFRESH_INTERVALS = [30, 60, 300, 1800, 3600];
 const COMPARE_CARD_ANIMATION_MS = 280;
 const TREND_COMPARE_UPDATE_MS = 620;
+const TREND_COMPARE_MAX_DAYS = 7;
 const initialCompareMode = localStorage.getItem('au-compareEnabled') === 'false'
   ? 'off'
   : (localStorage.getItem('au-compareMode') || 'elapsed');
@@ -157,6 +166,18 @@ const customSelects = new Map();
 function t(key) { return (I18N[state.lang] || I18N.en)[key] || key; }
 function persist(key, val) { state[key] = val; localStorage.setItem('au-' + key, val); }
 function isCompareEnabled() { return state.compareMode !== 'off'; }
+
+function dateRangeDayCount(range) {
+  const from = parseLocalDate(range && range.from);
+  const to = parseLocalDate(range && range.to);
+  if (!from || !to) return 0;
+  return Math.round((to - from) / 86400000) + 1;
+}
+
+function isTrendCompareChartAllowed(range = getTimeRange()) {
+  const days = dateRangeDayCount(range);
+  return days > 0 && days <= TREND_COMPARE_MAX_DAYS;
+}
 
 function sameRange(a, b) {
   return a && b && a.from === b.from && a.to === b.to;

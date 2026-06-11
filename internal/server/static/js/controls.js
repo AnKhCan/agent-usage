@@ -237,7 +237,13 @@ function buildControls() {
 
 // ── Events Binding ──
 $('sel-theme').onchange = e => { persist('theme', e.target.value); applyTheme(); };
-$('sel-lang').onchange = e => { persist('lang', e.target.value); buildControls(); refresh(); applyAutoRefresh(); };
+$('sel-lang').onchange = e => {
+  persist('lang', e.target.value);
+  buildControls();
+  if (typeof renderPricingPageFromState === 'function') renderPricingPageFromState();
+  refresh();
+  applyAutoRefresh();
+};
 $('sel-granularity').onchange = e => { persist('granularity', e.target.value); refresh(); };
 $('sel-compare-mode').onchange = e => {
   const wasEnabled = isCompareEnabled();

@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/briqt/agent-usage/internal/pricing"
 	"github.com/briqt/agent-usage/internal/storage"
 )
 
@@ -18,13 +19,14 @@ var staticFS embed.FS
 
 // Server serves the web dashboard and REST API.
 type Server struct {
-	db   *storage.DB
-	addr string
+	db             *storage.DB
+	addr           string
+	pricingOptions pricing.SyncOptions
 }
 
 // New creates a Server that will listen on the given address (host:port).
-func New(db *storage.DB, addr string) *Server {
-	return &Server{db: db, addr: addr}
+func New(db *storage.DB, addr string, pricingOptions pricing.SyncOptions) *Server {
+	return &Server{db: db, addr: addr, pricingOptions: pricingOptions}
 }
 
 // Start registers HTTP handlers and begins listening. It blocks until the server stops.
@@ -42,6 +44,11 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/sessions", s.handleSessions)
 	mux.HandleFunc("/api/sessions-page", s.handleSessionsPage)
 	mux.HandleFunc("/api/session-detail", s.handleSessionDetail)
+	mux.HandleFunc("/api/pricing/status", s.handlePricingStatus)
+	mux.HandleFunc("/api/pricing/missing", s.handlePricingMissing)
+	mux.HandleFunc("/api/pricing/overrides", s.handlePricingOverrides)
+	mux.HandleFunc("/api/pricing/overrides/", s.handlePricingOverride)
+	mux.HandleFunc("/api/pricing/sync", s.handlePricingSync)
 
 	log.Printf("server: listening on %s", s.addr)
 	return http.ListenAndServe(s.addr, mux)

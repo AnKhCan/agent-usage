@@ -76,6 +76,7 @@
     </div>
   </div>
 
+  <main id="dashboard-view">
   <div class="stats">
     <div class="stat-card"><div class="label" data-i18n="totalTokens">Total Tokens</div><div class="value tokens" id="s-tokens">0</div><div class="delta" id="d-tokens"></div></div>
     <div class="stat-card"><div class="label" data-i18n="totalCost">Total Cost</div><div class="value cost" id="s-cost">$0.00</div><div class="delta" id="d-cost"></div></div>
@@ -98,6 +99,7 @@
         </div>
       </div>
       <div class="chart-container trend-compare-container" id="chart-compare"></div>
+      <div class="trend-limit-notice" id="trend-limit-notice" hidden></div>
       <div class="trend-breakdowns" id="trend-breakdowns"></div>
     </div>
     <div class="chart-card" style="grid-column: 1 / -1;"><h3 data-i18n="tokenUsage">Token Usage Breakdown</h3><div class="chart-container" id="chart-tokens"></div></div>
@@ -131,12 +133,78 @@
     </div>
     <div class="pagination" id="pagination"></div>
   </div>
+  </main>
+
+  <section class="pricing-view" id="pricing-view" hidden>
+    <div class="pricing-page-head">
+      <div>
+        <div class="pricing-kicker" data-i18n="pricingKicker">Pricing</div>
+        <h1 data-i18n="pricingTitle">Model Prices</h1>
+      </div>
+      <div class="pricing-page-actions">
+        <button type="button" class="ctrl-btn" id="pricing-sync-btn">
+          <svg class="icon-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path></svg>
+          <span data-i18n="syncPrices">Sync Prices</span>
+        </button>
+        <button type="button" class="ctrl-btn primary" id="pricing-back-btn" data-i18n="backToDashboard">Dashboard</button>
+      </div>
+    </div>
+
+    <div class="pricing-status-grid" id="pricing-status-grid"></div>
+
+    <form class="pricing-editor" id="pricing-editor" hidden>
+      <div class="pricing-editor-head">
+        <div>
+          <div class="pricing-kicker" data-i18n="manualPrice">Manual Price</div>
+          <h2 id="pricing-editor-model"></h2>
+        </div>
+        <button type="button" class="expand-btn" id="pricing-editor-close" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+        </button>
+      </div>
+      <div class="pricing-form-grid">
+        <label><span data-i18n="inputPrice">Input ($/1M tokens)</span><input type="number" min="0" step="any" id="price-input" required></label>
+        <label><span data-i18n="outputPrice">Output ($/1M tokens)</span><input type="number" min="0" step="any" id="price-output" required></label>
+        <label><span data-i18n="cacheReadPrice">Cache Read ($/1M tokens)</span><input type="number" min="0" step="any" id="price-cache-read"></label>
+        <label><span data-i18n="cacheCreatePrice">Cache Write ($/1M tokens)</span><input type="number" min="0" step="any" id="price-cache-create"></label>
+      </div>
+      <label class="pricing-note"><span data-i18n="note">Note</span><input type="text" id="price-note"></label>
+      <div class="pricing-editor-actions">
+        <div class="pricing-message" id="pricing-message"></div>
+        <button type="button" class="ctrl-btn" id="pricing-cancel-btn" data-i18n="cancel">Cancel</button>
+        <button type="submit" class="ctrl-btn primary" id="pricing-save-btn" data-i18n="savePrice">Save Price</button>
+      </div>
+    </form>
+
+    <div class="pricing-grid">
+      <section class="pricing-panel">
+        <div class="pricing-panel-head">
+          <h2 data-i18n="missingPrices">Missing Prices</h2>
+          <span class="pricing-count" id="pricing-missing-count">0</span>
+        </div>
+        <div class="pricing-table-wrap" id="pricing-missing-list"></div>
+      </section>
+      <section class="pricing-panel">
+        <div class="pricing-panel-head">
+          <h2 data-i18n="manualOverrides">Manual Overrides</h2>
+          <span class="pricing-count" id="pricing-override-count">0</span>
+        </div>
+        <div class="pricing-table-wrap" id="pricing-overrides-list"></div>
+      </section>
+    </div>
+  </section>
 </div>
+
+<button type="button" class="pricing-fab" id="pricing-fab" aria-label="Model prices" title="Model prices">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 6v12"></path><path d="M15.5 8.5c-.8-.7-1.9-1-3.1-1-1.7 0-3 .8-3 2 0 3 6.2 1.4 6.2 4.5 0 1.2-1.3 2-3.2 2-1.4 0-2.6-.4-3.5-1.2"></path></svg>
+  <span class="pricing-fab-badge" id="pricing-fab-badge" hidden>0</span>
+</button>
 <script src="js/core.js"></script>
 <script src="js/charts.js"></script>
 <script src="js/sessions.js"></script>
 <script src="js/date-picker.js"></script>
 <script src="js/controls.js"></script>
+<script src="js/pricing.js"></script>
 <script src="js/bootstrap.js"></script>
 </body>
 </html>

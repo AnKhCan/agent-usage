@@ -29,5 +29,7 @@ collectors:
 storage:
   path: "./agent-usage.db"
 pricing:
-  # Prices are fetched from GitHub (litellm). Set HTTPS_PROXY env var if this fails.
+  # Prices are downloaded from litellm and cached locally. Set HTTPS_PROXY env var if this fails.
   sync_interval: 1h
+  source_url: "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
+  cache_path: "./model_prices_and_context_window.json"

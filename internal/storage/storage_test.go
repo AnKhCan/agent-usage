@@ -175,6 +175,51 @@ func TestPricing(t *testing.T) {
 	}
 }
 
+func TestPricingOverridesAndMissingModels(t *testing.T) {
+	db := tempDB(t)
+	ts := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	if err := db.UpsertPricing("known-model", 0.001, 0.002, 0, 0); err != nil {
+		t.Fatalf("UpsertPricing: %v", err)
+	}
+	if err := db.UpsertPricingOverride(PricingOverride{Model: "known-model", InputCostPerToken: 0.01, OutputCostPerToken: 0.02}); err != nil {
+		t.Fatalf("UpsertPricingOverride: %v", err)
+	}
+	all, err := db.GetAllPricing()
+	if err != nil {
+		t.Fatalf("GetAllPricing: %v", err)
+	}
+	if all["known-model"][0] != 0.01 || all["known-model"][1] != 0.02 {
+		t.Fatalf("override did not take precedence: %#v", all["known-model"])
+	}
+
+	if err := db.InsertUsage(&UsageRecord{Source: "codex", SessionID: "sess-missing", Model: "custom-model", InputTokens: 100, OutputTokens: 50, Timestamp: ts}); err != nil {
+		t.Fatalf("InsertUsage: %v", err)
+	}
+	missing, err := db.GetMissingPricingModels(all)
+	if err != nil {
+		t.Fatalf("GetMissingPricingModels: %v", err)
+	}
+	if len(missing) != 1 || missing[0].Model != "custom-model" {
+		t.Fatalf("expected custom-model missing, got %#v", missing)
+	}
+
+	if err := db.UpsertPricingOverride(PricingOverride{Model: "custom-model", InputCostPerToken: 0.003, OutputCostPerToken: 0.004}); err != nil {
+		t.Fatalf("UpsertPricingOverride custom: %v", err)
+	}
+	all, err = db.GetAllPricing()
+	if err != nil {
+		t.Fatalf("GetAllPricing after override: %v", err)
+	}
+	missing, err = db.GetMissingPricingModels(all)
+	if err != nil {
+		t.Fatalf("GetMissingPricingModels after override: %v", err)
+	}
+	if len(missing) != 0 {
+		t.Fatalf("expected no missing models, got %#v", missing)
+	}
+}
+
 func TestRecalcCosts(t *testing.T) {
 	db := tempDB(t)
 	ts := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
@@ -216,6 +261,28 @@ func TestRecalcCosts(t *testing.T) {
 	// 1000*0.003 + 500*0.015 = 3.0 + 7.5 = 10.5
 	if stats.TotalCost < 10.4 || stats.TotalCost > 10.6 {
 		t.Errorf("expected ~10.5, got %f", stats.TotalCost)
+	}
+}
+
+func TestRecalcAllCostsResetsUnpricedRecords(t *testing.T) {
+	db := tempDB(t)
+	ts := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	rec := &UsageRecord{Source: "claude", SessionID: "sess-1", Model: "custom-model", InputTokens: 1000, OutputTokens: 500, CostUSD: 9.99, Timestamp: ts}
+	if err := db.InsertUsage(rec); err != nil {
+		t.Fatalf("InsertUsage: %v", err)
+	}
+	calcFn := func(input, output, cc, cr int64, p [4]float64) float64 {
+		return float64(input)*p[0] + float64(output)*p[1]
+	}
+	if err := db.RecalcAllCosts(map[string][4]float64{}, calcFn); err != nil {
+		t.Fatalf("RecalcAllCosts: %v", err)
+	}
+	stats, err := db.GetDashboardStats(ts.Add(-time.Hour), ts.Add(time.Hour), "", "")
+	if err != nil {
+		t.Fatalf("GetDashboardStats: %v", err)
+	}
+	if stats.TotalCost != 0 {
+		t.Fatalf("expected cost reset to zero, got %f", stats.TotalCost)
 	}
 }
 

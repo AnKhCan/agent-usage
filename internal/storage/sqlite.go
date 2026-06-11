@@ -128,6 +128,17 @@ func migrate(db *sql.DB) error {
 			updated_at DATETIME
 		);
 
+		CREATE TABLE IF NOT EXISTS pricing_overrides (
+			model TEXT PRIMARY KEY,
+			input_cost_per_token REAL DEFAULT 0,
+			output_cost_per_token REAL DEFAULT 0,
+			cache_read_input_token_cost REAL DEFAULT 0,
+			cache_creation_input_token_cost REAL DEFAULT 0,
+			note TEXT DEFAULT '',
+			created_at DATETIME,
+			updated_at DATETIME
+		);
+
 		CREATE TABLE IF NOT EXISTS meta (
 			key TEXT PRIMARY KEY,
 			value TEXT DEFAULT ''

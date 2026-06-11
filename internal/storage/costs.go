@@ -5,22 +5,36 @@ import "strings"
 // CostCalcFunc is a function that calculates USD cost from token counts and per-token prices.
 type CostCalcFunc func(inputTokens, outputTokens, cacheCreation, cacheRead int64, prices [4]float64) float64
 
-// RecalcCosts recalculates costs for all usage records where cost_usd is zero,
+// RecalcCosts recalculates costs for usage records where cost_usd is zero,
 // using fuzzy model name matching against the provided pricing map.
 func (d *DB) RecalcCosts(allPrices map[string][4]float64, calcFn CostCalcFunc) error {
+	return d.recalcCosts(allPrices, calcFn, false)
+}
+
+// RecalcAllCosts recalculates every usage record, resetting records without a
+// matching price back to zero. This is used after pricing syncs and overrides.
+func (d *DB) RecalcAllCosts(allPrices map[string][4]float64, calcFn CostCalcFunc) error {
+	return d.recalcCosts(allPrices, calcFn, true)
+}
+
+func (d *DB) recalcCosts(allPrices map[string][4]float64, calcFn CostCalcFunc, all bool) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	rows, err := d.db.Query(`SELECT id, model, input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens FROM usage_records WHERE cost_usd = 0`)
+	query := `SELECT id, model, input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens FROM usage_records`
+	if !all {
+		query += ` WHERE cost_usd = 0`
+	}
+	rows, err := d.db.Query(query)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 
 	type rec struct {
-		id                       int64
-		model                    string
-		input, output, cc, cr    int64
+		id                    int64
+		model                 string
+		input, output, cc, cr int64
 	}
 	var recs []rec
 	for rows.Next() {
@@ -55,10 +69,16 @@ func (d *DB) RecalcCosts(allPrices map[string][4]float64, calcFn CostCalcFunc) e
 	for _, r := range recs {
 		prices, ok := matchPricing(r.model, allPrices)
 		if !ok {
+			if all {
+				if _, err := stmt.Exec(0, r.id); err != nil {
+					return err
+				}
+				updated++
+			}
 			continue
 		}
 		cost := calcFn(r.input, r.output, r.cc, r.cr, prices)
-		if cost > 0 {
+		if all || cost > 0 {
 			if _, err := stmt.Exec(cost, r.id); err != nil {
 				return err
 			}

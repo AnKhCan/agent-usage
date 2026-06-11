@@ -17,7 +17,7 @@ agent-usage runs locally and processes local files. Key security considerations:
 - **Session data** may contain prompts, code snippets, and API usage details
 - **SQLite database** stores aggregated usage data locally
 - **Web dashboard** binds to a configurable port (default: 9800) — restrict access in shared environments
-- **Pricing sync** makes outbound HTTPS requests to GitHub (litellm price data only)
+- **Pricing sync** makes outbound HTTPS requests to GitHub (litellm price data only) and caches the downloaded price file locally
 
 ## Best Practices
 
