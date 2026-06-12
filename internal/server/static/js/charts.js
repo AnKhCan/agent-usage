@@ -1,6 +1,5 @@
 // ── Charts & Data Fetching ──
 function initCharts() {
-  charts.compare = echarts.init($('chart-compare'));
   charts.pie = echarts.init($('chart-pie'));
   charts.cost = echarts.init($('chart-cost'));
   charts.tokens = echarts.init($('chart-tokens'));
@@ -127,28 +126,70 @@ function formatAPIRange(range) {
   return `${formatAPIInstant(range.from)} - ${formatAPIInstant(range.to)}`;
 }
 
+function renderTrendCompareContext(data) {
+  const chips = document.querySelectorAll('[data-trend-compare-context]');
+  if (!chips.length) return;
+  if (!isCompareEnabled() || !data) {
+    chips.forEach(chip => {
+      chip.hidden = true;
+      const label = chip.querySelector('.trend-compare-chip-label');
+      if (label) label.textContent = '';
+      chip.removeAttribute('data-tooltip');
+      chip.removeAttribute('aria-label');
+    });
+    return;
+  }
+
+  const mode = data.compare_mode || state.compareMode || 'elapsed';
+  const modeLabel = t('compare_' + mode);
+  const rangeLabel = formatAPIRange(data.compare_range);
+  const detail = rangeLabel ? `${t('previousPeriod')}: ${rangeLabel}` : '';
+  chips.forEach(chip => {
+    let label = chip.querySelector('.trend-compare-chip-label');
+    if (!label) {
+      label = document.createElement('span');
+      label.className = 'trend-compare-chip-label';
+      chip.appendChild(label);
+    }
+    label.textContent = modeLabel;
+    if (detail) {
+      chip.dataset.tooltip = detail;
+      chip.setAttribute('aria-label', `${modeLabel}, ${detail}`);
+    } else {
+      chip.removeAttribute('data-tooltip');
+      chip.setAttribute('aria-label', modeLabel);
+    }
+    chip.hidden = false;
+  });
+}
+
 function renderTrendBreakdowns(data) {
-  const box = $('trend-breakdowns');
-  if (!box) return;
+  const modelBox = $('trend-model-breakdown');
+  const sourceBox = $('trend-source-breakdown');
+  if (!modelBox || !sourceBox) return;
   if (!isCompareEnabled() || !data || !data.breakdowns) {
-    box.innerHTML = '';
-    box.hidden = true;
+    modelBox.innerHTML = '';
+    sourceBox.innerHTML = '';
     return;
   }
 
   const displayName = (name, kind) => kind === 'source' && SOURCE_LABEL_KEYS[name] ? t(SOURCE_LABEL_KEYS[name]) : (name || '-');
 
-  const renderSection = (title, items, kind) => {
+  const renderList = (items, kind) => {
     const visibleItems = (items || []).slice(0, 5);
-    if (visibleItems.length === 0) return '';
-    const maxCurrentCost = Math.max(...visibleItems.map(item => Number(item.current_cost) || 0), 0);
+    if (visibleItems.length === 0) return `<div class="trend-breakdown-empty">${esc(t('noComparisonData'))}</div>`;
     const rows = visibleItems.map((item, idx) => {
-      const cls = deltaClass({ delta: item.delta_cost || 0, delta_pct: item.delta_cost_pct }, 'cost');
-      const share = maxCurrentCost > 0 ? Math.max(4, Math.min(100, ((Number(item.current_cost) || 0) / maxCurrentCost) * 100)) : 0;
+      const deltaCost = Number(item.delta_cost) || 0;
+      const rawDeltaPct = Number(item.delta_cost_pct);
+      const hasDeltaPct = item.delta_cost_pct !== undefined && item.delta_cost_pct !== null && isFinite(rawDeltaPct);
+      const cls = deltaClass({ delta: deltaCost, delta_pct: item.delta_cost_pct }, 'cost');
+      const changePct = Math.abs(deltaCost) < 0.0000001 ? 0 : (hasDeltaPct ? Math.min(100, Math.abs(rawDeltaPct)) : 100);
+      const changeWidth = (changePct / 2).toFixed(1);
       const name = displayName(item.name, kind);
-      const deltaText = `${signedFormatted(item.delta_cost || 0, fmtCost)}${pctSuffix({ delta_pct: item.delta_cost_pct })}`;
-      const metaText = `<span class="trend-period-current">${t('currentPeriod')}</span> ${fmtCost(item.current_cost || 0)} | ${fmt(item.current_tokens || 0)} | ${fmt(item.current_calls || 0)} ↔ <span class="trend-period-previous">${t('previousPeriod')}</span> ${fmtCost(item.previous_cost || 0)} | ${fmt(item.previous_tokens || 0)} | ${fmt(item.previous_calls || 0)}`;
-      return `<div class="trend-breakdown-row ${cls}" style="--trend-share:${share.toFixed(1)}%;--row-index:${idx};" title="${esc(item.name)}">
+      const deltaText = `${signedFormatted(deltaCost, fmtCost)}${pctSuffix({ delta_pct: item.delta_cost_pct })}`;
+      const currentDetail = `${fmt(item.current_tokens || 0)} ${t('tokens')} | ${fmt(item.current_calls || 0)} ${t('calls')}`;
+      const previousDetail = `${fmt(item.previous_tokens || 0)} ${t('tokens')} | ${fmt(item.previous_calls || 0)} ${t('calls')}`;
+      return `<div class="trend-breakdown-row ${cls}" style="--trend-change-width:${changeWidth}%;--row-index:${idx};" title="${esc(item.name)}">
         <div class="trend-breakdown-main">
           <div class="trend-breakdown-identity">
             <span class="trend-breakdown-rank">${idx + 1}</span>
@@ -156,181 +197,83 @@ function renderTrendBreakdowns(data) {
           </div>
           <span class="trend-breakdown-delta ${cls}">${deltaText}</span>
         </div>
-        <div class="trend-breakdown-meta">
-          <span>${metaText}</span>
+        <div class="trend-breakdown-metrics">
+          <div class="trend-breakdown-metric">
+            <span>${esc(t('currentPeriod'))}</span>
+            <strong>${fmtCost(item.current_cost || 0)}</strong>
+            <em>${esc(currentDetail)}</em>
+          </div>
+          <div class="trend-breakdown-metric">
+            <span>${esc(t('previousPeriod'))}</span>
+            <strong>${fmtCost(item.previous_cost || 0)}</strong>
+            <em>${esc(previousDetail)}</em>
+          </div>
         </div>
         <div class="trend-breakdown-track" aria-hidden="true"><span></span></div>
       </div>`;
     }).join('');
-    return `<section class="trend-breakdown-section">
-      <div class="trend-breakdown-title">${title}</div>
-      ${rows}
-    </section>`;
+    return rows;
   };
 
-  const sections = [
-    renderSection(t('modelMovers'), data.breakdowns.models, 'model'),
-    renderSection(t('sourceMovers'), data.breakdowns.sources, 'source')
-  ].filter(Boolean);
-  box.hidden = sections.length === 0;
-  box.innerHTML = sections.join('');
-}
-
-function trendPointHasData(p) {
-  return [p && p.current, p && p.previous].some(v => {
-    if (!v) return false;
-    return ['cost', 'tokens', 'calls', 'sessions'].some(k => Number(v[k]) > 0);
-  });
-}
-
-function displayTrendPoints(points) {
-  const all = points || [];
-  return state.activePeriods ? all.filter(trendPointHasData) : all;
-}
-
-function renderTrendPeriodControl() {
-  const toggle = $('trend-period-toggle');
-  if (!toggle) return;
-  toggle.querySelectorAll('[data-active-periods]').forEach(btn => {
-    const active = (btn.dataset.activePeriods === 'true') === !!state.activePeriods;
-    btn.classList.toggle('active', active);
-    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
-  });
-}
-
-function renderTrendChartAvailability(allowed) {
-  const chartBox = $('chart-compare');
-  const notice = $('trend-limit-notice');
-  const toggle = $('trend-period-toggle');
-
-  if (toggle) toggle.hidden = !allowed;
-  if (chartBox) chartBox.hidden = !allowed;
-  if (!notice) return;
-
-  notice.hidden = allowed;
-  notice.textContent = allowed ? '' : t('trendCompareRangeLimit');
+  modelBox.innerHTML = renderList(data.breakdowns.models, 'model');
+  sourceBox.innerHTML = renderList(data.breakdowns.sources, 'source');
 }
 
 function setTrendCompareVisible(visible, opts = {}) {
-  const card = $('trend-compare-card');
-  if (!card) return;
+  const region = $('trend-compare-region');
+  if (!region) return;
   if (trendCompareHideTimer) {
     clearTimeout(trendCompareHideTimer);
     trendCompareHideTimer = null;
   }
 
   if (visible) {
-    const alreadyVisible = !card.hidden && !card.classList.contains('compare-hidden');
-    card.hidden = false;
+    const alreadyVisible = !region.hidden && !region.classList.contains('compare-hidden');
+    region.hidden = false;
     if (opts.animate === false || alreadyVisible) {
-      card.classList.remove('compare-hidden');
+      region.classList.remove('compare-hidden');
       return;
     }
-    card.classList.add('compare-hidden');
+    region.classList.add('compare-hidden');
     requestAnimationFrame(() => {
-      card.classList.remove('compare-hidden');
-      setTimeout(() => charts.compare.resize(), COMPARE_CARD_ANIMATION_MS);
+      region.classList.remove('compare-hidden');
     });
     return;
   }
 
-  card.classList.add('compare-hidden');
+  region.classList.add('compare-hidden');
   if (opts.animate === false) {
-    card.hidden = true;
+    region.hidden = true;
     if (typeof opts.afterHidden === 'function') opts.afterHidden();
     return;
   }
   trendCompareHideTimer = setTimeout(() => {
     if (!isCompareEnabled()) {
-      card.hidden = true;
+      region.hidden = true;
       if (typeof opts.afterHidden === 'function') opts.afterHidden();
     }
     trendCompareHideTimer = null;
-  }, COMPARE_CARD_ANIMATION_MS);
+  }, COMPARE_REGION_ANIMATION_MS);
 }
 
-function renderTrendCompare(data, opts = {}) {
-  const card = $('trend-compare-card');
-  const label = $('compare-range-label');
-  if (!card) return;
-  renderTrendPeriodControl();
+function renderTrendCompare(data) {
+  const region = $('trend-compare-region');
+  if (!region) return;
 
   if (!isCompareEnabled()) {
-    setTrendCompareVisible(false, { afterHidden: () => renderTrendBreakdowns(null) });
-    renderTrendChartAvailability(true);
+    setTrendCompareVisible(false, {
+      afterHidden: () => {
+        renderTrendCompareContext(null);
+        renderTrendBreakdowns(null);
+      }
+    });
     renderStatDeltas(null);
     return;
   }
 
   setTrendCompareVisible(true);
-  const chartAllowed = isTrendCompareChartAllowed();
-  renderTrendChartAvailability(chartAllowed);
-  const tc = getThemeColors();
-  const rawPoints = (data && data.series) || [];
-  const points = displayTrendPoints(rawPoints);
-  const labels = points.map(p => p.label || p.previous_label || '');
-  const current = points.map(p => +(((p.current && p.current.cost) || 0).toFixed(4)));
-  const previous = points.map(p => +(((p.previous && p.previous.cost) || 0).toFixed(4)));
-  const hasData = rawPoints.some(trendPointHasData);
-  const hiddenPeriods = Math.max(0, rawPoints.length - points.length);
-
-  if (label) {
-    const hiddenText = state.activePeriods && hiddenPeriods > 0 ? ` · ${t('emptyPeriodsHidden')}` : '';
-    label.textContent = data ? `${t('previousPeriod')}: ${formatAPIRange(data.compare_range)}${hiddenText}` : '';
-  }
-
-  if (!chartAllowed) {
-    charts.compare.clear();
-    if (opts.updateBreakdowns !== false) renderTrendBreakdowns(data);
-    return;
-  }
-
-  const animateUpdate = opts.animateUpdate !== false;
-  const updateDuration = opts.updateDuration || TREND_COMPARE_UPDATE_MS;
-  charts.compare.setOption({
-    ...baseOpt(),
-    animation: animateUpdate,
-    animationDuration: animateUpdate ? updateDuration : 0,
-    animationEasing: 'quarticOut',
-    animationDurationUpdate: animateUpdate ? updateDuration : 0,
-    animationEasingUpdate: 'quarticOut',
-    grid: { ...baseOpt().grid, left: 64, right: 34, top: 48, bottom: 36 },
-    graphic: hasData ? { type: 'text', style: { text: '' } } : {
-      type: 'text', left: 'center', top: 'center',
-      style: { text: t('noComparisonData'), fill: tc.muted, fontSize: 14, fontFamily: 'inherit' }
-    },
-    tooltip: {
-      ...baseOpt().tooltip,
-      trigger: 'axis',
-      formatter: params => {
-        const idx = params && params.length ? params[0].dataIndex : 0;
-        const p = points[idx] || {};
-        const c = (p.current && p.current.cost) || 0;
-        const prev = (p.previous && p.previous.cost) || 0;
-        const delta = c - prev;
-        const deltaColor = delta > 0 ? 'var(--delta-increase-2)' : delta < 0 ? 'var(--delta-decrease-2)' : 'var(--delta-equal)';
-        const deltaText = delta > 0 ? signedFormatted(delta, fmtCost) : delta < 0 ? signedFormatted(delta, fmtCost) : fmtCost(0);
-        return `<div style="font-weight:700;margin-bottom:6px;">${esc(p.label || '')} ↔ ${esc(p.previous_label || '')}</div>
-          <div>${esc(t('currentPeriod'))}: ${fmtCost(c)}</div>
-          <div>${esc(t('previousPeriod'))}: ${fmtCost(prev)}</div>
-          <div style="margin-top:4px;color:${deltaColor};">${deltaText}</div>`;
-      }
-    },
-    legend: {
-      top: 0, left: 'center',
-      textStyle: { color: tc.muted, fontSize: 11 },
-      itemGap: 16, itemWidth: 16, itemHeight: 8
-    },
-    xAxis: { type: 'category', data: labels, axisLine: { lineStyle: { color: tc.grid } }, axisLabel: { color: tc.muted } },
-    yAxis: { type: 'value', splitLine: { lineStyle: { color: tc.grid } }, axisLabel: { color: tc.muted, formatter: v => '$' + v } },
-    series: [
-      { id: 'trend-current', name: t('currentPeriod'), type: 'line', smooth: true, symbolSize: 5, showSymbol: labels.length <= 60, data: current, color: '#3b82f6', lineStyle: { width: 3 }, areaStyle: { opacity: 0.08 } },
-      { id: 'trend-previous', name: t('previousPeriod'), type: 'line', smooth: true, symbolSize: 5, showSymbol: labels.length <= 60, data: previous, color: '#94a3b8', lineStyle: { width: 2, type: 'dashed' } }
-    ]
-  }, { notMerge: opts.redraw === true || opts.replace === true, lazyUpdate: false });
-
-  if (opts.updateBreakdowns !== false) renderTrendBreakdowns(data);
-  charts.compare.resize();
+  renderTrendCompareContext(data);
+  renderTrendBreakdowns(data);
 }
 
 async function refresh() {
@@ -411,7 +354,6 @@ async function refresh() {
       { type: 'inside', start: 0, end: 100 }
     ];
 
-    lastTrendCompareData = trendCompare;
     renderTrendCompare(trendCompare);
 
     // Cost Trend

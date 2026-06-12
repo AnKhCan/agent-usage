@@ -86,22 +86,34 @@
     <div class="stat-card"><div class="label" data-i18n="cacheHitRate">Cache Hit Rate</div><div class="value" id="s-cache-hit">0%</div><div class="delta" id="d-cache-hit"></div></div>
   </div>
 
-  <div class="charts">
-    <div class="chart-card trend-compare-card" id="trend-compare-card" style="grid-column: 1 / -1;">
-      <div class="chart-card-head">
-        <div class="chart-title-block">
-          <h3 data-i18n="trendCompare">Trend Comparison</h3>
-          <div class="chart-subtitle" id="compare-range-label"></div>
-        </div>
-        <div class="trend-period-toggle" id="trend-period-toggle" role="group" aria-label="Trend period display">
-          <button type="button" class="trend-period-btn" data-active-periods="false" data-i18n="allPeriods">All Periods</button>
-          <button type="button" class="trend-period-btn" data-active-periods="true" data-i18n="activePeriods">Active Periods</button>
-        </div>
+  <div class="trend-compare-region" id="trend-compare-region">
+    <div class="trend-compare-region-inner">
+      <div class="trend-insight-grid" id="trend-insight-grid">
+        <section class="chart-card trend-mover-card trend-mover-card-model">
+          <div class="trend-mover-head">
+            <h3 data-i18n="modelMovers">Model Changes</h3>
+            <div class="trend-mover-head-actions">
+              <span class="trend-compare-chip" data-trend-compare-context hidden tabindex="0"><span class="trend-compare-chip-label"></span></span>
+              <span class="trend-mover-kicker" data-i18n="topFive">Top 5</span>
+            </div>
+          </div>
+          <div class="trend-mover-list" id="trend-model-breakdown"></div>
+        </section>
+        <section class="chart-card trend-mover-card trend-mover-card-source">
+          <div class="trend-mover-head">
+            <h3 data-i18n="sourceMovers">Source Changes</h3>
+            <div class="trend-mover-head-actions">
+              <span class="trend-compare-chip" data-trend-compare-context hidden tabindex="0"><span class="trend-compare-chip-label"></span></span>
+              <span class="trend-mover-kicker" data-i18n="topFive">Top 5</span>
+            </div>
+          </div>
+          <div class="trend-mover-list" id="trend-source-breakdown"></div>
+        </section>
       </div>
-      <div class="chart-container trend-compare-container" id="chart-compare"></div>
-      <div class="trend-limit-notice" id="trend-limit-notice" hidden></div>
-      <div class="trend-breakdowns" id="trend-breakdowns"></div>
     </div>
+  </div>
+
+  <div class="charts">
     <div class="chart-card" style="grid-column: 1 / -1;"><h3 data-i18n="tokenUsage">Token Usage Breakdown</h3><div class="chart-container" id="chart-tokens"></div></div>
     <div class="chart-card" style="grid-column: span 3;"><h3 data-i18n="costOverTime">Cost Trend</h3><div class="chart-container" id="chart-cost"></div></div>
     <div class="chart-card" style="grid-column: span 2;"><h3 data-i18n="costByModel">Cost Distribution</h3><div class="chart-container" id="chart-pie"></div></div>

@@ -61,7 +61,7 @@ const I18N = {
   en: {
     title: 'Usage Analytics', to: 'to', totalCost: 'Total Cost', totalTokens: 'Total Tokens',
     sessions: 'Sessions', prompts: 'Prompts', apiCalls: 'API Calls', cacheHitRate: 'Cache Hit Rate', costByModel: 'Cost by Model', costOverTime: 'Cost Trend',
-    compare: 'Compare', compare_off: 'Compare Off', compare_elapsed: 'Same Progress', compare_full: 'Full Previous', trendCompare: 'Trend Comparison', currentPeriod: 'Current', previousPeriod: 'Previous', allPeriods: 'All Periods', activePeriods: 'Active Periods', emptyPeriodsHidden: 'empty periods hidden', modelMovers: 'Model Changes', sourceMovers: 'Source Changes', noComparisonData: 'No comparison data.', trendCompareRangeLimit: 'Trend chart is available for ranges up to 7 days.',
+    compare: 'Compare', compare_off: 'Compare Off', compare_elapsed: 'Same Progress', compare_full: 'Full Previous', currentPeriod: 'Current', previousPeriod: 'Previous', modelMovers: 'Model Changes', sourceMovers: 'Source Changes', topFive: 'Top 5', noComparisonData: 'No comparison data.',
     tokenUsage: 'Token Usage', dailySessions: 'Daily Sessions', source: 'Source', project: 'Project',
     branch: 'Branch', time: 'Time', tokens: 'Tokens', cost: 'Cost', refresh: 'Refresh',
     sessionLog: 'Session Log',
@@ -82,7 +82,7 @@ const I18N = {
   zh: {
     title: '使用分析', to: '至', totalCost: '总费用', totalTokens: '总 Tokens',
     sessions: '会话数', prompts: 'Prompt 数', apiCalls: 'API 调用数', cacheHitRate: '缓存命中率', costByModel: '模型费用占比', costOverTime: '费用趋势',
-    compare: '对比', compare_off: '关闭对比', compare_elapsed: '相同进度', compare_full: '完整上期', trendCompare: '趋势对比', currentPeriod: '当前周期', previousPeriod: '上一周期', allPeriods: '全部时段', activePeriods: '活跃时段', emptyPeriodsHidden: '已隐藏无数据时段', modelMovers: '模型变化', sourceMovers: '来源变化', noComparisonData: '暂无对比数据。', trendCompareRangeLimit: '趋势图仅支持 7 天内的范围。',
+    compare: '对比', compare_off: '关闭对比', compare_elapsed: '相同进度', compare_full: '完整上期', currentPeriod: '当前周期', previousPeriod: '上一周期', modelMovers: '模型变化', sourceMovers: '来源变化', topFive: 'TOP 5', noComparisonData: '暂无对比数据。',
     tokenUsage: 'Token 用量', dailySessions: '每日会话数', source: '来源', project: '项目',
     branch: '分支', time: '时间', tokens: 'Tokens', cost: '费用', refresh: '刷新',
     sessionLog: '会话记录',
@@ -110,9 +110,7 @@ const PRESETS = [...RANGE_SHORTCUTS, 'custom'];
 const GRANULARITIES = ['1m', '30m', '1h', '6h', '12h', '1d', '1w', '1M'];
 const COMPARE_MODES = ['off', 'elapsed', 'full'];
 const REFRESH_INTERVALS = [30, 60, 300, 1800, 3600];
-const COMPARE_CARD_ANIMATION_MS = 280;
-const TREND_COMPARE_UPDATE_MS = 620;
-const TREND_COMPARE_MAX_DAYS = 7;
+const COMPARE_REGION_ANIMATION_MS = 340;
 const initialCompareMode = localStorage.getItem('au-compareEnabled') === 'false'
   ? 'off'
   : (localStorage.getItem('au-compareMode') || 'elapsed');
@@ -123,7 +121,6 @@ let state = {
   preset: localStorage.getItem('au-preset') || 'today',
   granularity: localStorage.getItem('au-granularity') || '1h',
   compareMode: initialCompareMode,
-  activePeriods: localStorage.getItem('au-activePeriods') !== 'false',
   autoRefresh: localStorage.getItem('au-autoRefresh') !== 'false',
   refreshInterval: parseInt(localStorage.getItem('au-refreshInterval')) || 300,
   customFrom: localStorage.getItem('au-customFrom') || '',
@@ -142,7 +139,6 @@ let sessionPage = 1;
 const PAGE_SIZE = 20;
 let expandedSessions = new Set(); // Stores opened sid
 let isFetching = false;
-let lastTrendCompareData = null;
 let trendCompareHideTimer = null;
 let projectFilterTimer = null;
 let datePicker = {
@@ -166,18 +162,6 @@ const customSelects = new Map();
 function t(key) { return (I18N[state.lang] || I18N.en)[key] || key; }
 function persist(key, val) { state[key] = val; localStorage.setItem('au-' + key, val); }
 function isCompareEnabled() { return state.compareMode !== 'off'; }
-
-function dateRangeDayCount(range) {
-  const from = parseLocalDate(range && range.from);
-  const to = parseLocalDate(range && range.to);
-  if (!from || !to) return 0;
-  return Math.round((to - from) / 86400000) + 1;
-}
-
-function isTrendCompareChartAllowed(range = getTimeRange()) {
-  const days = dateRangeDayCount(range);
-  return days > 0 && days <= TREND_COMPARE_MAX_DAYS;
-}
 
 function sameRange(a, b) {
   return a && b && a.from === b.from && a.to === b.to;

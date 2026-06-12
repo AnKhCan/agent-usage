@@ -229,7 +229,6 @@ function buildControls() {
 
   renderDatePicker();
   renderCompareModeControl({ animate: false });
-  renderTrendPeriodControl();
   $('filter-project').placeholder = t('filterProject');
   syncCustomSelects();
   updateModelSelectWidth();
@@ -258,20 +257,6 @@ $('sel-compare-mode').onchange = e => {
     renderCompareModeControl({ animate: false });
   }
   refresh();
-};
-$('trend-period-toggle').onclick = e => {
-  const btn = e.target.closest('[data-active-periods]');
-  if (!btn) return;
-  const next = btn.dataset.activePeriods === 'true';
-  if (state.activePeriods === next) return;
-  const redraw = state.activePeriods && !next;
-  persist('activePeriods', next);
-  renderTrendPeriodControl();
-  renderTrendCompare(lastTrendCompareData, {
-    updateBreakdowns: false,
-    redraw,
-    updateDuration: TREND_COMPARE_UPDATE_MS
-  });
 };
 $('sel-refresh-interval').onchange = e => { persist('refreshInterval', parseInt(e.target.value)); applyAutoRefresh(); };
 
