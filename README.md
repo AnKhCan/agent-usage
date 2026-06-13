@@ -10,13 +10,13 @@ Single binary + SQLite — zero infrastructure required.
 
 **[中文文档](README_CN.md)**
 
-Collects local session data from Claude Code, Codex, OpenClaw, OpenCode, Kiro CLI, and Pi, calculates costs automatically, and presents token usage, cost trends, and session details through a web dashboard.
+Collects local session data from Claude Code, Codex, OpenClaw, OpenCode, MiMo Code, Kiro CLI, and Pi, calculates costs automatically, and presents token usage, cost trends, and session details through a web dashboard.
 
 ![Dashboard](docs/dashboard.png)
 
 ## Features
 
-- 📁 **Local file parsing** — reads Claude Code, Codex CLI, OpenClaw, Pi session files, OpenCode SQLite database, and Kiro CLI session files directly
+- 📁 **Local file parsing** — reads Claude Code, Codex CLI, OpenClaw, Pi session files, OpenCode/MiMo Code SQLite databases, and Kiro CLI session files directly
 - 💰 **Automatic cost calculation** — caches model pricing from [litellm](https://github.com/BerriAI/litellm), supports manual prices for used models missing upstream pricing
 - 🗄️ **SQLite storage** — single file, zero ops, data is correctable
 - 📊 **Web dashboard** — dark-themed UI with ECharts: cost breakdown, token trends, session list
@@ -34,7 +34,7 @@ mkdir -p ./data && docker compose up -d
 open http://localhost:9800
 ```
 
-The default `docker-compose.yml` only mounts `~/.claude/projects` read-only. Uncomment additional volume mounts in `docker-compose.yml` for each agent you have installed (Codex, OpenClaw, OpenCode, Kiro, Pi). Data persists in `./data/`.
+The default `docker-compose.yml` only mounts `~/.claude/projects` read-only. Uncomment additional volume mounts in `docker-compose.yml` for each agent you have installed (Codex, OpenClaw, OpenCode, MiMo Code, Kiro, Pi). Data persists in `./data/`.
 
 > **Note:** Only enable mounts for agents you actually use. Docker creates missing host directories as root, which can interfere with tools like `npx skills add` that detect installed agents by directory existence.
 
@@ -87,6 +87,11 @@ collectors:
     paths:
       - "~/.local/share/opencode/opencode.db"
     scan_interval: 60s
+  mimocode:
+    enabled: true
+    paths:
+      - "~/.local/share/mimocode/mimocode.db"
+    scan_interval: 60s
   kiro:
     enabled: true
     paths:
@@ -133,6 +138,7 @@ open http://localhost:9800
 | [Codex CLI](https://github.com/openai/codex) | `~/.codex/sessions/<year>/<month>/<day>/<session>.jsonl` | JSONL |
 | [OpenClaw](https://github.com/openclaw/openclaw) | `~/.openclaw/agents/<agentId>/sessions/<sessionId>.jsonl` | JSONL |
 | [OpenCode](https://github.com/anomalyco/opencode) | `~/.local/share/opencode/opencode.db` | SQLite |
+| MiMo Code | `~/.local/share/mimocode/mimocode.db` | SQLite |
 | [Kiro CLI](https://kiro.dev) | `~/.kiro/sessions/cli/<session>.json` + `.jsonl` | JSON + JSONL |
 | [Pi](https://pi.dev) | `~/.pi/agent/sessions/<workspace>/<session>.jsonl` | JSONL |
 
@@ -149,7 +155,7 @@ See `internal/collector/claude.go` as a reference implementation.
 
 The web dashboard provides:
 
-- **Sticky top bar** — time presets, granularity, source filter (Claude/Codex/OpenClaw/OpenCode/Kiro CLI/Pi), auto-refresh
+- **Sticky top bar** — time presets, granularity, source filter (Claude/Codex/OpenClaw/OpenCode/MiMo Code/Kiro CLI/Pi), auto-refresh
 - **Summary cards** — total tokens, cost, sessions, prompts, API calls
 - **Token usage** — stacked bar chart (input/output/cache read/cache write)
 - **Cost trend** — stacked bar chart by model with consistent color mapping
@@ -175,7 +181,7 @@ agent-usage
 │   │   ├── codex.go            # Codex CLI JSONL parser
 │   │   ├── openclaw.go         # OpenClaw session scanner
 │   │   ├── openclaw_process.go # OpenClaw JSONL parser
-│   │   ├── opencode.go         # OpenCode SQLite collector
+│   │   ├── opencode.go         # OpenCode/MiMo Code SQLite collector
 │   │   ├── kiro.go             # Kiro CLI session scanner
 │   │   ├── kiro_process.go     # Kiro CLI JSON + JSONL parser
 │   │   ├── pi.go               # Pi coding agent session scanner
@@ -207,7 +213,7 @@ When prices update or an override changes, historical records are automatically 
 
 ## API Endpoints
 
-All endpoints accept `from` and `to` (YYYY-MM-DD) query parameters. Optional: `source` (`claude`, `codex`, `openclaw`, `opencode`, `kiro`, `pi`) to filter by agent, `model` to filter by model name, `granularity` (`1m`, `30m`, `1h`, `6h`, `12h`, `1d`, `1w`, `1M`) for time-series endpoints.
+All endpoints accept `from` and `to` (YYYY-MM-DD) query parameters. Optional: `source` (`claude`, `codex`, `openclaw`, `opencode`, `mimocode`, `kiro`, `pi`) to filter by agent, `model` to filter by model name, `granularity` (`1m`, `30m`, `1h`, `6h`, `12h`, `1d`, `1w`, `1M`) for time-series endpoints.
 
 | Endpoint | Description |
 |----------|-------------|

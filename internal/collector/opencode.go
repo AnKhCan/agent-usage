@@ -10,15 +10,25 @@ import (
 	"github.com/briqt/agent-usage/internal/storage"
 )
 
-// OpenCodeCollector scans OpenCode's SQLite database and extracts usage records.
+// OpenCodeCollector scans OpenCode-like SQLite databases and extracts usage records.
 type OpenCodeCollector struct {
-	db    *storage.DB
-	paths []string // paths to opencode.db files
+	db     *storage.DB
+	paths  []string // paths to SQLite database files
+	source string
 }
 
 // NewOpenCodeCollector creates an OpenCodeCollector that reads the given db paths.
 func NewOpenCodeCollector(db *storage.DB, paths []string) *OpenCodeCollector {
-	return &OpenCodeCollector{db: db, paths: paths}
+	return newOpenCodeLikeCollector(db, paths, "opencode")
+}
+
+// NewMiMoCodeCollector creates a collector for MiMo Code's SQLite database.
+func NewMiMoCodeCollector(db *storage.DB, paths []string) *OpenCodeCollector {
+	return newOpenCodeLikeCollector(db, paths, "mimocode")
+}
+
+func newOpenCodeLikeCollector(db *storage.DB, paths []string, source string) *OpenCodeCollector {
+	return &OpenCodeCollector{db: db, paths: paths, source: source}
 }
 
 type opencodeMessageData struct {
@@ -33,9 +43,9 @@ type opencodeMessageData struct {
 }
 
 type opencodeTokens struct {
-	Input     int64        `json:"input"`
-	Output    int64        `json:"output"`
-	Reasoning int64        `json:"reasoning"`
+	Input     int64         `json:"input"`
+	Output    int64         `json:"output"`
+	Reasoning int64         `json:"reasoning"`
 	Cache     opencodeCache `json:"cache"`
 }
 
@@ -54,11 +64,11 @@ type opencodePath struct {
 	Root string `json:"root"`
 }
 
-// Scan reads all configured opencode database files and extracts new usage records.
+// Scan reads all configured database files and extracts new usage records.
 func (c *OpenCodeCollector) Scan() error {
 	for _, dbPath := range c.paths {
 		if err := c.processDB(dbPath); err != nil {
-			log.Printf("opencode: error processing %s: %v", dbPath, err)
+			log.Printf("%s: error processing %s: %v", c.source, dbPath, err)
 		}
 	}
 	return nil
@@ -71,10 +81,10 @@ func (c *OpenCodeCollector) processDB(dbPath string) error {
 		return err
 	}
 
-	// Open opencode db read-only
+	// Open source db read-only
 	srcDB, err := sql.Open("sqlite", dbPath+"?mode=ro&_pragma=journal_mode(wal)&_pragma=busy_timeout(3000)")
 	if err != nil {
-		return fmt.Errorf("open opencode db: %w", err)
+		return fmt.Errorf("open %s db: %w", c.source, err)
 	}
 	defer srcDB.Close()
 
@@ -88,7 +98,7 @@ func (c *OpenCodeCollector) processDB(dbPath string) error {
 		lastWatermark,
 	)
 	if err != nil {
-		return fmt.Errorf("query opencode messages: %w", err)
+		return fmt.Errorf("query %s messages: %w", c.source, err)
 	}
 	defer rows.Close()
 
@@ -123,7 +133,7 @@ func (c *OpenCodeCollector) processDB(dbPath string) error {
 		}
 
 		rec := &storage.UsageRecord{
-			Source:                   "opencode",
+			Source:                   c.source,
 			SessionID:                sessionID,
 			Model:                    msg.ModelID,
 			Timestamp:                ts,
@@ -143,7 +153,7 @@ func (c *OpenCodeCollector) processDB(dbPath string) error {
 		// Track session metadata
 		if _, ok := sessions[sessionID]; !ok {
 			sessions[sessionID] = &storage.SessionRecord{
-				Source:    "opencode",
+				Source:    c.source,
 				SessionID: sessionID,
 				CWD:       directory,
 				Project:   directory,
@@ -169,7 +179,7 @@ func (c *OpenCodeCollector) processDB(dbPath string) error {
 						s.Prompts++
 					}
 					promptEvents = append(promptEvents, &storage.PromptEvent{
-						Source:    "opencode",
+						Source:    c.source,
 						SessionID: sid,
 						Timestamp: time.UnixMilli(timeCreated),
 					})
@@ -180,19 +190,19 @@ func (c *OpenCodeCollector) processDB(dbPath string) error {
 
 	if len(records) > 0 {
 		if err := c.db.InsertUsageBatch(records); err != nil {
-			return fmt.Errorf("insert opencode usage: %w", err)
+			return fmt.Errorf("insert %s usage: %w", c.source, err)
 		}
 	}
 
 	if len(promptEvents) > 0 {
 		if err := c.db.InsertPromptBatch(promptEvents); err != nil {
-			return fmt.Errorf("insert opencode prompts: %w", err)
+			return fmt.Errorf("insert %s prompts: %w", c.source, err)
 		}
 	}
 
 	for _, sess := range sessions {
 		if err := c.db.UpsertSession(sess); err != nil {
-			return fmt.Errorf("upsert opencode session: %w", err)
+			return fmt.Errorf("upsert %s session: %w", c.source, err)
 		}
 	}
 

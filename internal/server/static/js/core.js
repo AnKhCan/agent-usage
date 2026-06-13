@@ -5,7 +5,7 @@ const esc = s => {
 };
 const $ = id => document.getElementById(id);
 const fmt = n => n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : String(n);
-const fmtCost = n => n === 0 ? '$0.00' : n >= 1 ? '$' + n.toFixed(2) : '$' + n.toFixed(4);
+const fmtCost = n => n === 0 ? '$0.00' : n >= 1 ? '$' + n.toFixed(2) : '$' + parseFloat(n.toFixed(4));
 
 // ── Timezone helpers ──
 // Format a Date as YYYY-MM-DD in local timezone (avoids toISOString which returns UTC)
@@ -70,7 +70,7 @@ const I18N = {
     light: 'Light', dark: 'Dark', system: 'System', autoOn: 'Auto ✓', autoOff: 'Auto',
     input: 'Input', output: 'Output', cacheRead: 'Cache Read', cacheCreate: 'Cache Write',
     gran_1m: '1 min', gran_30m: '30 min', gran_1h: '1 hour', gran_6h: '6 hours', gran_12h: '12 hours', gran_1d: '1 day', gran_1w: '1 week', gran_1M: '1 month',
-    model: 'Model', calls: 'Calls', allSources: 'All Sources', claudeCode: 'Claude Code', codex: 'Codex', openClaw: 'OpenClaw', openCode: 'OpenCode', kiro: 'Kiro CLI', pi: 'Pi',
+    model: 'Model', calls: 'Calls', allSources: 'All Sources', claudeCode: 'Claude Code', codex: 'Codex', openClaw: 'OpenClaw', openCode: 'OpenCode', mimoCode: 'MiMo Code', kiro: 'Kiro CLI', pi: 'Pi',
     filterProject: 'Filter by project...', justNow: 'just now', mAgo: 'm ago', hAgo: 'h ago', dAgo: 'd ago',
     noSessions: 'No sessions found in this period.', unitMin: 'min', unitSec: 'sec',
     apply: 'Apply', previousMonth: 'Previous month', nextMonth: 'Next month', dateRange: 'Date range',
@@ -91,7 +91,7 @@ const I18N = {
     light: '浅色', dark: '深色', system: '跟随系统', autoOn: '自动 ✓', autoOff: '自动',
     input: '输入', output: '输出', cacheRead: '缓存读取', cacheCreate: '缓存写入',
     gran_1m: '1 分钟', gran_30m: '30 分钟', gran_1h: '1 小时', gran_6h: '6 小时', gran_12h: '12 小时', gran_1d: '1 天', gran_1w: '1 周', gran_1M: '1 个月',
-    model: '模型', calls: '调用次数', allSources: '全部来源', claudeCode: 'Claude Code', codex: 'Codex', openClaw: 'OpenClaw', openCode: 'OpenCode', kiro: 'Kiro CLI', pi: 'Pi',
+    model: '模型', calls: '调用次数', allSources: '全部来源', claudeCode: 'Claude Code', codex: 'Codex', openClaw: 'OpenClaw', openCode: 'OpenCode', mimoCode: 'MiMo Code', kiro: 'Kiro CLI', pi: 'Pi',
     filterProject: '按项目筛选...', justNow: '刚刚', mAgo: '分钟前', hAgo: '小时前', dAgo: '天前',
     noSessions: '当前时间段内暂无会话数据。', unitMin: '分钟', unitSec: '秒',
     apply: '应用', previousMonth: '上个月', nextMonth: '下个月', dateRange: '日期范围',
@@ -104,7 +104,7 @@ const I18N = {
 
 // ── State ──
 const colors = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#ec4899'];
-const SOURCE_LABEL_KEYS = { claude: 'claudeCode', codex: 'codex', openclaw: 'openClaw', opencode: 'openCode', kiro: 'kiro', pi: 'pi' };
+const SOURCE_LABEL_KEYS = { claude: 'claudeCode', codex: 'codex', openclaw: 'openClaw', opencode: 'openCode', mimocode: 'mimoCode', kiro: 'kiro', pi: 'pi' };
 const RANGE_SHORTCUTS = ['today', 'thisWeek', 'thisMonth', 'thisYear', 'last3d', 'last7d', 'last30d'];
 const PRESETS = [...RANGE_SHORTCUTS, 'custom'];
 const GRANULARITIES = ['1m', '30m', '1h', '6h', '12h', '1d', '1w', '1M'];

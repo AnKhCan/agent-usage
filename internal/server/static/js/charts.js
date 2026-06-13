@@ -251,14 +251,14 @@ function renderTrendBreakdowns(data) {
         </div>
         <div class="trend-breakdown-metrics">
           <div class="trend-breakdown-metric">
-            <span>${esc(t('currentPeriod'))}</span>
-            <strong>${fmtCost(item.current_cost || 0)}</strong>
-            <em>${esc(currentDetail)}</em>
-          </div>
-          <div class="trend-breakdown-metric">
             <span>${esc(t('previousPeriod'))}</span>
             <strong>${fmtCost(item.previous_cost || 0)}</strong>
             <em>${esc(previousDetail)}</em>
+          </div>
+          <div class="trend-breakdown-metric">
+            <span>${esc(t('currentPeriod'))}</span>
+            <strong>${fmtCost(item.current_cost || 0)}</strong>
+            <em>${esc(currentDetail)}</em>
           </div>
         </div>
         <div class="trend-breakdown-track" aria-hidden="true"><span></span></div>

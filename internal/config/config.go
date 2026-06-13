@@ -29,6 +29,7 @@ type CollectorConfigs struct {
 	Codex    CollectorConfig `yaml:"codex"`
 	OpenClaw CollectorConfig `yaml:"openclaw"`
 	OpenCode CollectorConfig `yaml:"opencode"`
+	MiMoCode CollectorConfig `yaml:"mimocode"`
 	Kiro     CollectorConfig `yaml:"kiro"`
 	Pi       CollectorConfig `yaml:"pi"`
 }
@@ -86,6 +87,11 @@ func DefaultConfig() *Config {
 			OpenCode: CollectorConfig{
 				Enabled:      true,
 				Paths:        []string{filepath.Join(home, ".local", "share", "opencode", "opencode.db")},
+				ScanInterval: 60 * time.Second,
+			},
+			MiMoCode: CollectorConfig{
+				Enabled:      true,
+				Paths:        []string{filepath.Join(home, ".local", "share", "mimocode", "mimocode.db")},
 				ScanInterval: 60 * time.Second,
 			},
 			Kiro: CollectorConfig{
@@ -148,6 +154,9 @@ func Load(path string) (*Config, error) {
 	}
 	for i, p := range cfg.Collectors.OpenCode.Paths {
 		cfg.Collectors.OpenCode.Paths[i] = expandPath(p)
+	}
+	for i, p := range cfg.Collectors.MiMoCode.Paths {
+		cfg.Collectors.MiMoCode.Paths[i] = expandPath(p)
 	}
 	for i, p := range cfg.Collectors.Kiro.Paths {
 		cfg.Collectors.Kiro.Paths[i] = expandPath(p)

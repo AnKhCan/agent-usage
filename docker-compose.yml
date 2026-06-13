@@ -25,6 +25,7 @@ services:
       # - ~/.codex/sessions:/sessions/codex:ro
       # - ~/.openclaw/agents:/sessions/openclaw:ro
       # - ~/.local/share/opencode:/sessions/opencode:ro
+      # - ~/.local/share/mimocode:/sessions/mimocode:ro
       # - ~/.kiro/sessions:/sessions/kiro:ro
       # - ~/.pi/agent/sessions:/sessions/pi:ro
       # Optional: custom config override
