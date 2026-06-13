@@ -3,6 +3,7 @@ package storage
 import (
 	"database/sql"
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -99,10 +100,21 @@ func (d *DB) UpsertSession(s *SessionRecord) error {
 
 // InsertUsage inserts a single usage record, ignoring duplicates.
 func (d *DB) InsertUsage(r *UsageRecord) error {
-	_, err := d.db.Exec(`INSERT OR IGNORE INTO usage_records(source,session_id,model,input_tokens,output_tokens,
+	rawModel := strings.TrimSpace(r.RawModel)
+	if rawModel == "" {
+		rawModel = strings.TrimSpace(r.Model)
+	}
+	model, err := d.ResolveModelName(rawModel)
+	if err != nil {
+		return err
+	}
+	if model == "" {
+		model = strings.TrimSpace(r.Model)
+	}
+	_, err = d.db.Exec(`INSERT OR IGNORE INTO usage_records(source,session_id,model,raw_model,input_tokens,output_tokens,
 		cache_creation_input_tokens,cache_read_input_tokens,reasoning_output_tokens,cost_usd,timestamp,project,git_branch)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
-		r.Source, r.SessionID, r.Model, r.InputTokens, r.OutputTokens,
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		r.Source, r.SessionID, model, rawModel, r.InputTokens, r.OutputTokens,
 		r.CacheCreationInputTokens, r.CacheReadInputTokens, r.ReasoningOutputTokens,
 		r.CostUSD, r.Timestamp, r.Project, r.GitBranch)
 	return err
@@ -111,20 +123,32 @@ func (d *DB) InsertUsage(r *UsageRecord) error {
 // InsertUsageBatch inserts multiple usage records in a single transaction,
 // ignoring duplicates.
 func (d *DB) InsertUsageBatch(records []*UsageRecord) error {
+	aliases, err := loadModelAliasMap(d.db)
+	if err != nil {
+		return err
+	}
 	tx, err := d.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	stmt, err := tx.Prepare(`INSERT OR IGNORE INTO usage_records(source,session_id,model,input_tokens,output_tokens,
+	stmt, err := tx.Prepare(`INSERT OR IGNORE INTO usage_records(source,session_id,model,raw_model,input_tokens,output_tokens,
 		cache_creation_input_tokens,cache_read_input_tokens,reasoning_output_tokens,cost_usd,timestamp,project,git_branch)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 	for _, r := range records {
-		_, err := stmt.Exec(r.Source, r.SessionID, r.Model, r.InputTokens, r.OutputTokens,
+		rawModel := strings.TrimSpace(r.RawModel)
+		if rawModel == "" {
+			rawModel = strings.TrimSpace(r.Model)
+		}
+		model := resolveModelWithAliases(rawModel, aliases)
+		if model == "" {
+			model = strings.TrimSpace(r.Model)
+		}
+		_, err := stmt.Exec(r.Source, r.SessionID, model, rawModel, r.InputTokens, r.OutputTokens,
 			r.CacheCreationInputTokens, r.CacheReadInputTokens, r.ReasoningOutputTokens,
 			r.CostUSD, r.Timestamp, r.Project, r.GitBranch)
 		if err != nil {

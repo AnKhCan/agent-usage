@@ -49,6 +49,10 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/pricing/overrides", s.handlePricingOverrides)
 	mux.HandleFunc("/api/pricing/overrides/", s.handlePricingOverride)
 	mux.HandleFunc("/api/pricing/sync", s.handlePricingSync)
+	mux.HandleFunc("/api/models/status", s.handleModelsStatus)
+	mux.HandleFunc("/api/models/aliases", s.handleModelAliases)
+	mux.HandleFunc("/api/models/aliases/", s.handleModelAlias)
+	mux.HandleFunc("/api/models/alias-candidates", s.handleModelAliasCandidates)
 
 	log.Printf("server: listening on %s", s.addr)
 	return http.ListenAndServe(s.addr, mux)

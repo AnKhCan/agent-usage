@@ -6,5 +6,5 @@ buildControls();
 initPricingPage();
 applyAutoRefresh();
 refresh();
-updatePricingFab();
+updateModelManagementBadge();
 
