@@ -21,6 +21,7 @@ type UsageRecord struct {
 	Source                   string // "claude" or "codex"
 	SessionID                string
 	Model                    string
+	RawModel                 string
 	InputTokens              int64
 	OutputTokens             int64
 	CacheCreationInputTokens int64
@@ -76,6 +77,7 @@ func migrate(db *sql.DB) error {
 			source TEXT NOT NULL,
 			session_id TEXT NOT NULL,
 			model TEXT NOT NULL,
+			raw_model TEXT DEFAULT '',
 			input_tokens INTEGER DEFAULT 0,
 			output_tokens INTEGER DEFAULT 0,
 			cache_creation_input_tokens INTEGER DEFAULT 0,
@@ -89,7 +91,6 @@ func migrate(db *sql.DB) error {
 		CREATE INDEX IF NOT EXISTS idx_usage_timestamp ON usage_records(timestamp);
 		CREATE INDEX IF NOT EXISTS idx_usage_session ON usage_records(session_id);
 		CREATE INDEX IF NOT EXISTS idx_usage_source ON usage_records(source);
-		CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_dedup ON usage_records(session_id, model, timestamp, input_tokens, output_tokens);
 
 		CREATE TABLE IF NOT EXISTS sessions (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -139,6 +140,15 @@ func migrate(db *sql.DB) error {
 			updated_at DATETIME
 		);
 
+		CREATE TABLE IF NOT EXISTS model_aliases (
+			alias TEXT PRIMARY KEY,
+			canonical_model TEXT NOT NULL,
+			note TEXT DEFAULT '',
+			source TEXT DEFAULT 'manual',
+			created_at DATETIME,
+			updated_at DATETIME
+		);
+
 		CREATE TABLE IF NOT EXISTS meta (
 			key TEXT PRIMARY KEY,
 			value TEXT DEFAULT ''
@@ -153,6 +163,7 @@ func migrate(db *sql.DB) error {
 
 	// Add scan_context column to file_state for existing DBs (idempotent).
 	db.Exec("ALTER TABLE file_state ADD COLUMN scan_context TEXT DEFAULT ''")
+	db.Exec("ALTER TABLE usage_records ADD COLUMN raw_model TEXT DEFAULT ''")
 
 	// Versioned migrations: each runs once, tracked via meta table.
 	migrations := []struct {
@@ -187,6 +198,13 @@ func migrate(db *sql.DB) error {
 				DELETE FROM file_state;
 			`,
 		},
+		{
+			"005_usage_raw_model_aliases", `
+				UPDATE usage_records SET raw_model = model WHERE raw_model = '' OR raw_model IS NULL;
+				DROP INDEX IF EXISTS idx_usage_dedup;
+				CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_dedup ON usage_records(session_id, raw_model, timestamp, input_tokens, output_tokens);
+			`,
+		},
 	}
 	for _, m := range migrations {
 		var done string
@@ -199,6 +217,10 @@ func migrate(db *sql.DB) error {
 		}
 		db.Exec(`INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
 			"migration_"+m.id, "done")
+	}
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_dedup
+		ON usage_records(session_id, raw_model, timestamp, input_tokens, output_tokens)`); err != nil {
+		return err
 	}
 	return nil
 }

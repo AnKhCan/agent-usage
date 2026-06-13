@@ -220,6 +220,163 @@ func TestPricingOverridesAndMissingModels(t *testing.T) {
 	}
 }
 
+func TestModelAliasesAggregateGLMVariants(t *testing.T) {
+	db := tempDB(t)
+	ts := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	records := []*UsageRecord{
+		{Source: "codex", SessionID: "s1", Model: "glm-5.1", InputTokens: 100, OutputTokens: 10, Timestamp: ts},
+		{Source: "codex", SessionID: "s2", Model: "GLM-5.1", InputTokens: 200, OutputTokens: 20, Timestamp: ts.Add(time.Second)},
+		{Source: "codex", SessionID: "s3", Model: "zai-org/GLM-5.1", InputTokens: 300, OutputTokens: 30, Timestamp: ts.Add(2 * time.Second)},
+	}
+	if err := db.InsertUsageBatch(records); err != nil {
+		t.Fatalf("InsertUsageBatch: %v", err)
+	}
+
+	result, err := db.GetCostByModel(ts.Add(-time.Hour), ts.Add(time.Hour), "")
+	if err != nil {
+		t.Fatalf("GetCostByModel: %v", err)
+	}
+	if len(result) != 1 || result[0].Model != "glm-5.1" {
+		t.Fatalf("expected variants aggregated as glm-5.1, got %+v", result)
+	}
+
+	var rawCount int
+	if err := db.db.QueryRow("SELECT COUNT(DISTINCT raw_model) FROM usage_records").Scan(&rawCount); err != nil {
+		t.Fatalf("raw_model count: %v", err)
+	}
+	if rawCount != 3 {
+		t.Fatalf("expected 3 raw variants preserved, got %d", rawCount)
+	}
+}
+
+func TestModelAliasDedupUsesRawModel(t *testing.T) {
+	db := tempDB(t)
+	ts := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	records := []*UsageRecord{
+		{Source: "codex", SessionID: "s1", Model: "GLM-5.1", InputTokens: 100, OutputTokens: 50, Timestamp: ts},
+		{Source: "codex", SessionID: "s1", Model: "zai-org/GLM-5.1", InputTokens: 100, OutputTokens: 50, Timestamp: ts},
+	}
+	if err := db.InsertUsageBatch(records); err != nil {
+		t.Fatalf("InsertUsageBatch: %v", err)
+	}
+
+	stats, err := db.GetDashboardStats(ts.Add(-time.Hour), ts.Add(time.Hour), "", "glm-5.1")
+	if err != nil {
+		t.Fatalf("GetDashboardStats: %v", err)
+	}
+	if stats.TotalCalls != 2 {
+		t.Fatalf("expected raw variants to remain distinct for dedup, got %d calls", stats.TotalCalls)
+	}
+}
+
+func TestApplyModelAliasesRewritesHistoryAndRecalculatesCosts(t *testing.T) {
+	db := tempDB(t)
+	ts := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	if err := db.InsertUsage(&UsageRecord{
+		Source: "codex", SessionID: "s1", Model: "custom-provider/model-x",
+		InputTokens: 1000, OutputTokens: 500, CostUSD: 9.99, Timestamp: ts,
+	}); err != nil {
+		t.Fatalf("InsertUsage: %v", err)
+	}
+	if err := db.UpsertModelAlias(ModelAlias{Alias: "custom-provider/model-x", CanonicalModel: "model-x"}); err != nil {
+		t.Fatalf("UpsertModelAlias: %v", err)
+	}
+	if err := db.ApplyModelAliases(); err != nil {
+		t.Fatalf("ApplyModelAliases: %v", err)
+	}
+	var model, rawModel string
+	if err := db.db.QueryRow("SELECT model, raw_model FROM usage_records").Scan(&model, &rawModel); err != nil {
+		t.Fatalf("query usage: %v", err)
+	}
+	if model != "model-x" || rawModel != "custom-provider/model-x" {
+		t.Fatalf("expected canonical model-x and raw provider model, got model=%q raw=%q", model, rawModel)
+	}
+
+	calcFn := func(input, output, cc, cr int64, p [4]float64) float64 {
+		return float64(input)*p[0] + float64(output)*p[1]
+	}
+	if err := db.RecalcAllCosts(map[string][4]float64{"model-x": {0.001, 0.002, 0, 0}}, calcFn); err != nil {
+		t.Fatalf("RecalcAllCosts: %v", err)
+	}
+	stats, err := db.GetDashboardStats(ts.Add(-time.Hour), ts.Add(time.Hour), "", "model-x")
+	if err != nil {
+		t.Fatalf("GetDashboardStats: %v", err)
+	}
+	if stats.TotalCost != 2 {
+		t.Fatalf("expected recalculated cost 2, got %f", stats.TotalCost)
+	}
+}
+
+func TestDeleteModelAliasRestoresRawCanonical(t *testing.T) {
+	db := tempDB(t)
+	ts := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	if err := db.UpsertModelAlias(ModelAlias{Alias: "provider/model-y", CanonicalModel: "model-y"}); err != nil {
+		t.Fatalf("UpsertModelAlias: %v", err)
+	}
+	if err := db.InsertUsage(&UsageRecord{Source: "codex", SessionID: "s1", Model: "provider/model-y", InputTokens: 100, Timestamp: ts}); err != nil {
+		t.Fatalf("InsertUsage: %v", err)
+	}
+	if err := db.DeleteModelAlias("provider/model-y"); err != nil {
+		t.Fatalf("DeleteModelAlias: %v", err)
+	}
+	if err := db.ApplyModelAliases(); err != nil {
+		t.Fatalf("ApplyModelAliases: %v", err)
+	}
+	var model string
+	if err := db.db.QueryRow("SELECT model FROM usage_records").Scan(&model); err != nil {
+		t.Fatalf("query usage: %v", err)
+	}
+	if model != "provider/model-y" {
+		t.Fatalf("expected canonical to return to raw model, got %q", model)
+	}
+}
+
+func TestImportConfigAliasesDoesNotOverwriteManualAlias(t *testing.T) {
+	db := tempDB(t)
+	if err := db.UpsertModelAlias(ModelAlias{Alias: "raw-model", CanonicalModel: "manual-model", Source: "manual"}); err != nil {
+		t.Fatalf("UpsertModelAlias: %v", err)
+	}
+	if err := db.ImportConfigAliases(map[string]string{"raw-model": "config-model", "other-raw": "other-model"}); err != nil {
+		t.Fatalf("ImportConfigAliases: %v", err)
+	}
+	aliases, err := db.GetModelAliases()
+	if err != nil {
+		t.Fatalf("GetModelAliases: %v", err)
+	}
+	got := map[string]ModelAlias{}
+	for _, a := range aliases {
+		got[a.Alias] = a
+	}
+	if got["raw-model"].CanonicalModel != "manual-model" || got["raw-model"].Source != "manual" {
+		t.Fatalf("manual alias was overwritten: %+v", got["raw-model"])
+	}
+	if got["other-raw"].CanonicalModel != "other-model" || got["other-raw"].Source != "config" {
+		t.Fatalf("config alias not imported: %+v", got["other-raw"])
+	}
+}
+
+func TestModelAliasCandidatesFindProviderVariants(t *testing.T) {
+	db := tempDB(t)
+	ts := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	records := []*UsageRecord{
+		{Source: "codex", SessionID: "s1", Model: "glm-5.1", InputTokens: 100, OutputTokens: 50, Timestamp: ts},
+		{Source: "codex", SessionID: "s2", Model: "zai-org/GLM-5.1", InputTokens: 200, OutputTokens: 50, Timestamp: ts.Add(time.Second)},
+	}
+	if err := db.InsertUsageBatch(records); err != nil {
+		t.Fatalf("InsertUsageBatch: %v", err)
+	}
+	candidates, err := db.GetModelAliasCandidates()
+	if err != nil {
+		t.Fatalf("GetModelAliasCandidates: %v", err)
+	}
+	if len(candidates) != 1 {
+		t.Fatalf("expected one candidate, got %+v", candidates)
+	}
+	if candidates[0].CanonicalModel != "glm-5.1" || len(candidates[0].Variants) != 2 {
+		t.Fatalf("unexpected candidate: %+v", candidates[0])
+	}
+}
+
 func TestRecalcCosts(t *testing.T) {
 	db := tempDB(t)
 	ts := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)

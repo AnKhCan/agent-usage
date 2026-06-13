@@ -240,6 +240,8 @@ $('sel-lang').onchange = e => {
   persist('lang', e.target.value);
   buildControls();
   if (typeof renderPricingPageFromState === 'function') renderPricingPageFromState();
+  if (typeof renderAliasPageFromState === 'function') renderAliasPageFromState();
+  if (typeof updateModelManagementBadge === 'function') updateModelManagementBadge();
   refresh();
   applyAutoRefresh();
 };

@@ -36,3 +36,8 @@ pricing:
   sync_interval: 1h
   source_url: "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
   cache_path: "/data/model_prices_and_context_window.json"
+
+# Optional bulk model aliases. UI-managed aliases are stored in SQLite.
+model_aliases:
+  "zai-org/GLM-5.1": "glm-5.1"
+  "GLM-5.1": "glm-5.1"

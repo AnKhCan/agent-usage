@@ -467,7 +467,7 @@ async function refresh() {
     }, true);
 
     applySessionPage(sessions);
-    if (typeof updatePricingFab === 'function') updatePricingFab();
+    if (typeof updateModelManagementBadge === 'function') updateModelManagementBadge();
 
   } finally {
     isFetching = false;

@@ -11,10 +11,11 @@ import (
 
 // Config holds the top-level application configuration.
 type Config struct {
-	Server     ServerConfig     `yaml:"server"`
-	Collectors CollectorConfigs `yaml:"collectors"`
-	Storage    StorageConfig    `yaml:"storage"`
-	Pricing    PricingConfig    `yaml:"pricing"`
+	Server       ServerConfig      `yaml:"server"`
+	Collectors   CollectorConfigs  `yaml:"collectors"`
+	Storage      StorageConfig     `yaml:"storage"`
+	Pricing      PricingConfig     `yaml:"pricing"`
+	ModelAliases map[string]string `yaml:"model_aliases"`
 }
 
 // ServerConfig holds HTTP server settings.

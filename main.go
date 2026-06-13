@@ -40,6 +40,13 @@ func main() {
 	}
 	defer db.Close()
 
+	if err := db.ImportConfigAliases(cfg.ModelAliases); err != nil {
+		log.Fatalf("model aliases: %v", err)
+	}
+	if err := db.ApplyModelAliases(); err != nil {
+		log.Fatalf("apply model aliases: %v", err)
+	}
+
 	// Check if version changed — if so, reset scan state to force full re-scan
 	// (needed when prompt counting logic or other parsing changes)
 	lastVer, _ := db.GetMeta("version")
