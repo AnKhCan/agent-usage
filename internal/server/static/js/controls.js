@@ -215,6 +215,11 @@ function normalizeDateState() {
 function buildControls() {
   normalizeDateState();
   document.querySelectorAll('[data-i18n]').forEach(el => el.textContent = t(el.dataset.i18n));
+  const modelBtn = $('model-management-btn');
+  if (modelBtn) {
+    modelBtn.title = t('modelManagement');
+    modelBtn.setAttribute('aria-label', t('modelManagement'));
+  }
 
   const buildOpts = (arr, val, labelFn) => arr.map(v => `<option value="${v}" ${val === v ? 'selected' : ''}>${labelFn(v)}</option>`).join('');
 

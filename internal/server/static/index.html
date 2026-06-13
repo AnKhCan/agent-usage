@@ -14,9 +14,8 @@
 <div class="app-container">
   <div class="top-bar">
     <div class="top-bar-header">
-      <button type="button" class="model-management-btn" id="model-management-btn">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18"></path><path d="M18 7H9.5a3.5 3.5 0 0 0 0 7H14a3.5 3.5 0 0 1 0 7H6"></path></svg>
-        <span data-i18n="modelManagement">Models</span>
+      <button type="button" class="model-management-btn" id="model-management-btn" aria-label="Model Management" title="Model Management">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="21" x2="14" y1="4" y2="4"></line><line x1="10" x2="3" y1="4" y2="4"></line><line x1="21" x2="12" y1="12" y2="12"></line><line x1="8" x2="3" y1="12" y2="12"></line><line x1="21" x2="16" y1="20" y2="20"></line><line x1="12" x2="3" y1="20" y2="20"></line><line x1="14" x2="14" y1="2" y2="6"></line><line x1="8" x2="8" y1="10" y2="14"></line><line x1="16" x2="16" y1="18" y2="22"></line></svg>
         <span class="model-management-badge" id="model-management-badge" hidden>0</span>
       </button>
       <div class="top-bar-controls">
@@ -152,7 +151,6 @@
   <section class="pricing-view models-view" id="models-view" hidden>
     <div class="pricing-page-head">
       <div>
-        <div class="pricing-kicker" data-i18n="modelsKicker">Models</div>
         <h1 data-i18n="modelManagement">Model Management</h1>
       </div>
       <div class="pricing-page-actions">
@@ -165,8 +163,14 @@
     </div>
 
     <div class="models-tabs" role="tablist" aria-label="Model management">
-      <button type="button" class="models-tab active" id="models-tab-pricing" data-models-tab="pricing" role="tab" aria-controls="models-pricing-panel" aria-selected="true" data-i18n="pricesTab">Prices</button>
-      <button type="button" class="models-tab" id="models-tab-aliases" data-models-tab="aliases" role="tab" aria-controls="models-aliases-panel" aria-selected="false" data-i18n="aliasesTab">Aliases</button>
+      <button type="button" class="models-tab active" id="models-tab-pricing" data-models-tab="pricing" role="tab" aria-controls="models-pricing-panel" aria-selected="true">
+        <svg class="models-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" x2="12" y1="2" y2="22"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7H14a3.5 3.5 0 0 1 0 7H6"></path></svg>
+        <span data-i18n="pricesTab">Prices</span>
+      </button>
+      <button type="button" class="models-tab" id="models-tab-aliases" data-models-tab="aliases" role="tab" aria-controls="models-aliases-panel" aria-selected="false">
+        <svg class="models-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7h.01"></path><path d="M3.8 3.8h6.8l9.6 9.6a2 2 0 0 1 0 2.8l-4 4a2 2 0 0 1-2.8 0l-9.6-9.6V3.8Z"></path></svg>
+        <span data-i18n="aliasesTab">Aliases</span>
+      </button>
     </div>
 
     <div class="models-tab-panel" id="models-pricing-panel" role="tabpanel" aria-labelledby="models-tab-pricing">
@@ -215,13 +219,13 @@
     </div>
 
     <div class="models-tab-panel" id="models-aliases-panel" role="tabpanel" aria-labelledby="models-tab-aliases" hidden>
-      <form class="pricing-editor alias-editor" id="alias-editor">
+      <form class="pricing-editor alias-editor" id="alias-editor" hidden>
         <div class="pricing-editor-head">
           <div>
             <div class="pricing-kicker" id="alias-editor-kicker" data-i18n="manualAlias">Manual Alias</div>
             <h2 id="alias-editor-title" data-i18n="newAlias">New Alias</h2>
           </div>
-          <button type="button" class="expand-btn" id="alias-editor-clear" aria-label="Clear">
+          <button type="button" class="expand-btn" id="alias-editor-clear" aria-label="Close" title="Close">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
           </button>
         </div>
@@ -241,7 +245,10 @@
         <section class="pricing-panel">
           <div class="pricing-panel-head">
             <h2 data-i18n="aliasesTab">Aliases</h2>
-            <span class="pricing-count" id="alias-count">0</span>
+            <div class="pricing-panel-head-actions">
+              <button type="button" class="pricing-mini-btn" id="alias-new-btn" data-i18n="newAlias">New Alias</button>
+              <span class="pricing-count" id="alias-count">0</span>
+            </div>
           </div>
           <div class="pricing-table-wrap" id="alias-list"></div>
         </section>
@@ -250,7 +257,7 @@
             <h2 data-i18n="aliasCandidates">Candidates</h2>
             <span class="pricing-count" id="alias-candidate-count">0</span>
           </div>
-          <div class="pricing-table-wrap" id="alias-candidate-list"></div>
+          <div id="alias-candidate-list"></div>
         </section>
       </div>
     </div>

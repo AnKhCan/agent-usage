@@ -78,7 +78,7 @@ const I18N = {
     manualPrice: 'Manual Price', inputPrice: 'Input ($/1M)', outputPrice: 'Output ($/1M)', cacheReadPrice: 'Cache Read ($/1M)', cacheCreatePrice: 'Cache Write ($/1M)', note: 'Note', cancel: 'Cancel', savePrice: 'Save Price',
     missingPrices: 'Missing Prices', manualOverrides: 'Manual Overrides', setPrice: 'Set Price', edit: 'Edit', delete: 'Delete', noMissingPrices: 'No missing model prices.', noOverrides: 'No manual overrides.',
     sourceURL: 'Source URL', cachePath: 'Cache File', lastSync: 'Last Sync', lastDownload: 'Last Download', status: 'Status', never: 'Never', ok: 'OK', syncedModels: 'Synced Models', missing: 'Missing', overrides: 'Overrides', saved: 'Saved', syncFailed: 'Sync failed', saveFailed: 'Save failed', deleteFailed: 'Delete failed',
-    manualAlias: 'Manual Alias', newAlias: 'New Alias', rawAlias: 'Raw model / alias', canonicalModel: 'Canonical model', saveAlias: 'Save Alias', noAliases: 'No aliases configured.', aliasCandidates: 'Candidates', noAliasCandidates: 'No alias candidates.', currentModel: 'Current model', applyGroup: 'Apply Group', use: 'Use', manualAliasSource: 'Manual', configAliasSource: 'Config', aliasRequired: 'Alias and canonical model are required.'
+    manualAlias: 'Manual Alias', newAlias: 'New Alias', editAlias: 'Edit Alias', rawAlias: 'Raw model / alias', canonicalModel: 'Canonical model', saveAlias: 'Save Alias', noAliases: 'No aliases configured.', aliasCandidates: 'Candidates', noAliasCandidates: 'No alias candidates.', currentModel: 'Current model', applyGroup: 'Apply {count}', applyGroupConfirm: 'Apply {count} aliases to {model}?', use: 'Use', manualAliasSource: 'Manual', configAliasSource: 'Config', aliasRequired: 'Alias and canonical model are required.'
   },
   zh: {
     title: '使用分析', to: '至', totalCost: '总费用', totalTokens: '总 Tokens',
@@ -96,11 +96,11 @@ const I18N = {
     filterProject: '按项目筛选...', justNow: '刚刚', mAgo: '分钟前', hAgo: '小时前', dAgo: '天前',
     noSessions: '当前时间段内暂无会话数据。', unitMin: '分钟', unitSec: '秒',
     apply: '应用', previousMonth: '上个月', nextMonth: '下个月', dateRange: '日期范围',
-    pricingKicker: '价格', pricingTitle: '模型价格', modelsKicker: '模型', modelManagement: '模型管理', pricesTab: '价格', aliasesTab: '别名', syncPrices: '同步价格', backToDashboard: '仪表盘',
+    pricingKicker: '价格', pricingTitle: '模型价格', modelsKicker: '', modelManagement: '模型管理', pricesTab: '价格', aliasesTab: '别名', syncPrices: '同步价格', backToDashboard: '仪表盘',
     manualPrice: '手动价格', inputPrice: '输入', outputPrice: '输出', cacheReadPrice: '缓存读取', cacheCreatePrice: '缓存写入', note: '备注', cancel: '取消', savePrice: '保存价格',
     missingPrices: '缺失价格', manualOverrides: '手动覆盖', setPrice: '设置价格', edit: '编辑', delete: '删除', noMissingPrices: '暂无缺失价格的模型。', noOverrides: '暂无手动覆盖。',
     sourceURL: '来源地址', cachePath: '缓存文件', lastSync: '最近同步', lastDownload: '最近下载', status: '状态', never: '从未', ok: '正常', syncedModels: '已同步模型', missing: '缺失', overrides: '覆盖', saved: '已保存', syncFailed: '同步失败', saveFailed: '保存失败', deleteFailed: '删除失败',
-    manualAlias: '手动别名', newAlias: '新增别名', rawAlias: '原始模型 / 别名', canonicalModel: '规范模型', saveAlias: '保存别名', noAliases: '暂无模型别名。', aliasCandidates: '候选', noAliasCandidates: '暂无疑似别名候选。', currentModel: '当前模型', applyGroup: '应用整组', use: '使用', manualAliasSource: '手动', configAliasSource: '配置', aliasRequired: '别名和规范模型不能为空。'
+    manualAlias: '手动别名', newAlias: '新增别名', editAlias: '编辑别名', rawAlias: '原始模型 / 别名', canonicalModel: '规范模型', saveAlias: '保存别名', noAliases: '暂无模型别名。', aliasCandidates: '候选', noAliasCandidates: '暂无疑似别名候选。', currentModel: '当前模型', applyGroup: '应用 {count} 项', applyGroupConfirm: '将 {count} 个别名应用到 {model}？', use: '使用', manualAliasSource: '手动', configAliasSource: '配置', aliasRequired: '别名和规范模型不能为空。'
   }
 };
 

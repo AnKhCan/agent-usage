@@ -65,6 +65,10 @@ function aliasSourceLabel(source) {
   return source || '-';
 }
 
+function tf(key, vars = {}) {
+  return Object.entries(vars).reduce((s, [k, v]) => s.replaceAll(`{${k}}`, v), t(key));
+}
+
 function renderPricingStatus() {
   const box = $('pricing-status-grid');
   if (!box) return;
@@ -279,10 +283,10 @@ function renderAliases() {
   box.innerHTML = `<table class="pricing-table alias-table"><thead><tr>
     <th>${esc(t('rawAlias'))}</th><th>${esc(t('canonicalModel'))}</th><th>${esc(t('source'))}</th><th>${esc(t('note'))}</th><th></th>
   </tr></thead><tbody>${items.map(item => `<tr>
-    <td><div class="pricing-model-name" title="${esc(item.alias)}">${esc(item.alias)}</div></td>
-    <td><div class="pricing-model-name" title="${esc(item.canonical_model)}">${esc(item.canonical_model)}</div></td>
-    <td><span class="alias-source-pill ${esc(item.source || '')}">${esc(aliasSourceLabel(item.source))}</span></td>
-    <td>${esc(item.note || '-')}</td>
+    <td data-label="${esc(t('rawAlias'))}"><div class="pricing-model-name alias-model-name" title="${esc(item.alias)}">${esc(item.alias)}</div></td>
+    <td data-label="${esc(t('canonicalModel'))}"><div class="pricing-model-name alias-model-name" title="${esc(item.canonical_model)}">${esc(item.canonical_model)}</div></td>
+    <td data-label="${esc(t('source'))}"><span class="alias-source-pill ${esc(item.source || '')}">${esc(aliasSourceLabel(item.source))}</span></td>
+    <td data-label="${esc(t('note'))}">${esc(item.note || '-')}</td>
     <td class="pricing-actions-cell">
       <button type="button" class="pricing-mini-btn" data-alias-action="edit" data-alias="${esc(item.alias)}">${esc(t('edit'))}</button>
       <button type="button" class="pricing-mini-btn danger" data-alias-action="delete" data-alias="${esc(item.alias)}">${esc(t('delete'))}</button>
@@ -300,24 +304,33 @@ function renderAliasCandidates() {
     box.innerHTML = `<div class="pricing-empty">${esc(t('noAliasCandidates'))}</div>`;
     return;
   }
-  box.innerHTML = `<div class="alias-candidate-stack">${items.map((item, idx) => `<div class="alias-candidate-card">
+  box.innerHTML = `<div class="alias-candidate-stack">${items.map((item, idx) => {
+    const variants = item.variants || [];
+    return `<div class="alias-candidate-card">
     <div class="alias-candidate-head">
       <div>
-        <div class="pricing-model-name" title="${esc(item.canonical_model)}">${esc(item.canonical_model)}</div>
+        <div class="pricing-model-name alias-model-name" title="${esc(item.canonical_model)}">${esc(item.canonical_model)}</div>
         <div class="pricing-model-meta">${fmt(item.usage_count || 0)} ${esc(t('calls'))} | ${fmt(item.total_tokens || 0)} ${esc(t('tokens'))}</div>
       </div>
-      <button type="button" class="pricing-mini-btn" data-alias-action="apply-candidate" data-candidate-index="${idx}">${esc(t('applyGroup'))}</button>
+      <button type="button" class="pricing-mini-btn" data-alias-action="apply-candidate" data-candidate-index="${idx}">${esc(tf('applyGroup', { count: fmt(variants.length) }))}</button>
     </div>
-    <table class="pricing-table compact alias-candidate-table"><thead><tr>
-      <th>${esc(t('rawAlias'))}</th><th>${esc(t('source'))}</th><th>${esc(t('calls'))}</th><th>${esc(t('currentModel'))}</th><th></th>
-    </tr></thead><tbody>${(item.variants || []).map(variant => `<tr>
-      <td><div class="pricing-model-name" title="${esc(variant.raw_model)}">${esc(variant.raw_model)}</div></td>
-      <td>${esc(pricingSourcesLabel(variant.sources))}</td>
-      <td>${fmt(variant.usage_count || 0)}</td>
-      <td><div class="pricing-model-name" title="${esc(variant.model)}">${esc(variant.model)}</div></td>
-      <td class="pricing-actions-cell"><button type="button" class="pricing-mini-btn" data-alias-action="use-candidate" data-raw-model="${esc(variant.raw_model)}" data-canonical-model="${esc(item.canonical_model)}">${esc(t('use'))}</button></td>
-    </tr>`).join('')}</tbody></table>
-  </div>`).join('')}</div>`;
+    <div class="alias-candidate-rows">${variants.map(variant => `<div class="alias-candidate-row">
+      <div class="alias-candidate-main">
+        <div class="alias-candidate-label">${esc(t('rawAlias'))}</div>
+        <div class="pricing-model-name alias-model-name" title="${esc(variant.raw_model)}">${esc(variant.raw_model)}</div>
+      </div>
+      <div class="alias-candidate-meta">
+        <span>${esc(pricingSourcesLabel(variant.sources))}</span>
+        <span>${fmt(variant.usage_count || 0)} ${esc(t('calls'))}</span>
+      </div>
+      <div class="alias-candidate-current">
+        <div class="alias-candidate-label">${esc(t('currentModel'))}</div>
+        <div class="pricing-model-name alias-model-name" title="${esc(variant.model)}">${esc(variant.model)}</div>
+      </div>
+      <button type="button" class="pricing-mini-btn" data-alias-action="use-candidate" data-raw-model="${esc(variant.raw_model)}" data-canonical-model="${esc(item.canonical_model)}">${esc(t('use'))}</button>
+    </div>`).join('')}</div>
+  </div>`;
+  }).join('')}</div>`;
 }
 
 function renderAliasPageFromState() {
@@ -335,14 +348,18 @@ async function loadAliasPage() {
   renderAliasPageFromState();
 }
 
-function openAliasEditor(alias = '', data = {}) {
-  modelState.editingAlias = alias;
+function openAliasEditor(alias = '', data = {}, opts = {}) {
+  const editingExisting = !!alias && opts.mode !== 'new';
+  modelState.editingAlias = editingExisting ? alias : '';
+  const editor = $('alias-editor');
+  if (editor) editor.hidden = false;
   const input = $('alias-input');
   input.value = alias;
-  input.disabled = !!alias;
+  input.disabled = editingExisting;
   $('alias-canonical-input').value = data.canonical_model || '';
   $('alias-note-input').value = data.note || '';
-  $('alias-editor-title').textContent = alias ? alias : t('newAlias');
+  $('alias-editor-kicker').textContent = editingExisting ? t('editAlias') : t('manualAlias');
+  $('alias-editor-title').textContent = editingExisting ? alias : t('newAlias');
   $('alias-message').textContent = '';
   $('alias-message').className = 'pricing-message';
   $('alias-editor').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -350,11 +367,14 @@ function openAliasEditor(alias = '', data = {}) {
 
 function clearAliasEditor() {
   modelState.editingAlias = '';
+  const editor = $('alias-editor');
+  if (editor) editor.hidden = true;
   const input = $('alias-input');
   input.value = '';
   input.disabled = false;
   $('alias-canonical-input').value = '';
   $('alias-note-input').value = '';
+  $('alias-editor-kicker').textContent = t('manualAlias');
   $('alias-editor-title').textContent = t('newAlias');
   $('alias-message').textContent = '';
   $('alias-message').className = 'pricing-message';
@@ -381,8 +401,8 @@ async function saveModelAlias(e) {
     });
     msg.textContent = t('saved');
     msg.className = 'pricing-message ok';
-    clearAliasEditor();
     await loadAliasPage();
+    clearAliasEditor();
     await updateModelManagementBadge();
   } catch (err) {
     msg.textContent = `${t('saveFailed')}: ${err.message}`;
@@ -396,8 +416,8 @@ async function deleteModelAlias(alias) {
   if (!confirm(`${t('delete')} ${alias}?`)) return;
   try {
     await modelsRequest(`aliases/${encodeURIComponent(alias)}`, { method: 'DELETE' });
-    clearAliasEditor();
     await loadAliasPage();
+    clearAliasEditor();
     await updateModelManagementBadge();
   } catch (err) {
     alert(`${t('deleteFailed')}: ${err.message}`);
@@ -409,6 +429,7 @@ async function applyAliasCandidate(index) {
   if (!item) return;
   const variants = item.variants || [];
   if (variants.length === 0) return;
+  if (!confirm(tf('applyGroupConfirm', { count: fmt(variants.length), model: item.canonical_model || '-' }))) return;
   const btns = document.querySelectorAll(`[data-alias-action="apply-candidate"][data-candidate-index="${index}"]`);
   btns.forEach(btn => btn.disabled = true);
   try {
@@ -510,6 +531,7 @@ function initPricingPage() {
   $('alias-editor').onsubmit = saveModelAlias;
   $('alias-cancel-btn').onclick = clearAliasEditor;
   $('alias-editor-clear').onclick = clearAliasEditor;
+  $('alias-new-btn').onclick = () => openAliasEditor();
   $('alias-list').onclick = e => {
     const btn = e.target.closest('[data-alias-action]');
     if (!btn) return;
@@ -522,12 +544,10 @@ function initPricingPage() {
     const btn = e.target.closest('[data-alias-action]');
     if (!btn) return;
     if (btn.dataset.aliasAction === 'use-candidate') {
-      clearAliasEditor();
-      $('alias-input').value = btn.dataset.rawModel || '';
-      $('alias-canonical-input').value = btn.dataset.canonicalModel || '';
-      $('alias-note-input').value = 'candidate';
-      $('alias-editor-title').textContent = btn.dataset.rawModel || t('newAlias');
-      $('alias-editor').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      openAliasEditor(btn.dataset.rawModel || '', {
+        canonical_model: btn.dataset.canonicalModel || '',
+        note: 'candidate'
+      }, { mode: 'new' });
     }
     if (btn.dataset.aliasAction === 'apply-candidate') {
       applyAliasCandidate(Number(btn.dataset.candidateIndex));
