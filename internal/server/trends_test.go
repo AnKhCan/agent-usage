@@ -68,6 +68,40 @@ func TestTrendCompareBreakdownsFollowCompareMode(t *testing.T) {
 	}
 }
 
+func TestMergeTrendBreakdownsSkipsZeroCostChanges(t *testing.T) {
+	current := []storage.TrendBreakdownValue{
+		{Name: "unchanged", Cost: 5, Tokens: 100, Calls: 1},
+		{Name: "increased", Cost: 12, Tokens: 120, Calls: 2},
+		{Name: "decreased", Cost: 1, Tokens: 10, Calls: 1},
+		{Name: "free", Cost: 0, Tokens: 50, Calls: 1},
+	}
+	previous := []storage.TrendBreakdownValue{
+		{Name: "unchanged", Cost: 5, Tokens: 80, Calls: 1},
+		{Name: "increased", Cost: 2, Tokens: 20, Calls: 1},
+		{Name: "decreased", Cost: 4, Tokens: 40, Calls: 2},
+		{Name: "free", Cost: 0, Tokens: 10, Calls: 1},
+	}
+
+	items := mergeTrendBreakdowns(current, previous, 10)
+	if itemByName(items, "unchanged") != nil {
+		t.Fatalf("unchanged zero-cost delta should be filtered out: %+v", items)
+	}
+	if itemByName(items, "free") != nil {
+		t.Fatalf("free zero-cost delta should be filtered out: %+v", items)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected only nonzero cost changes, got %+v", items)
+	}
+	if items[0].Name != "increased" || items[1].Name != "decreased" {
+		t.Fatalf("expected items sorted by absolute cost delta, got %+v", items)
+	}
+
+	limited := mergeTrendBreakdowns(current, previous, 1)
+	if len(limited) != 1 || limited[0].Name != "increased" {
+		t.Fatalf("expected limit after zero-cost filtering, got %+v", limited)
+	}
+}
+
 func requestTrendCompare(t *testing.T, s *Server, date string, tzOffset int, mode string) trendCompareResponse {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, "/api/trends/compare?from="+date+"&to="+date+"&tz_offset="+strconv.Itoa(tzOffset)+"&compare_mode="+mode, nil)

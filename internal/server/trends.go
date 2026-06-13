@@ -73,6 +73,8 @@ type trendCompareResponse struct {
 	Breakdowns   trendBreakdowns     `json:"breakdowns"`
 }
 
+const trendCostEpsilon = 0.0000001
+
 func (s *Server) handleTrendCompare(w http.ResponseWriter, r *http.Request) {
 	from, to, compareFrom, compareTo, tzOffset, compareMode, err := s.parseTrendCompareRanges(r)
 	if err != nil {
@@ -394,6 +396,9 @@ func mergeTrendBreakdowns(current, previous []storage.TrendBreakdownValue, limit
 		if pair.previous.Cost != 0 {
 			pct := (item.DeltaCost / pair.previous.Cost) * 100
 			item.DeltaCostPct = &pct
+		}
+		if math.Abs(item.DeltaCost) < trendCostEpsilon {
+			continue
 		}
 		result = append(result, item)
 	}

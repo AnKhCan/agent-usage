@@ -61,7 +61,7 @@ const I18N = {
   en: {
     title: 'Usage Analytics', to: 'to', totalCost: 'Total Cost', totalTokens: 'Total Tokens',
     sessions: 'Sessions', prompts: 'Prompts', apiCalls: 'API Calls', cacheHitRate: 'Cache Hit Rate', costByModel: 'Cost by Model', costOverTime: 'Cost Trend',
-    compare: 'Compare', compare_off: 'Compare Off', compare_elapsed: 'Same Progress', compare_full: 'Full Previous', currentPeriod: 'Current', previousPeriod: 'Previous', modelMovers: 'Model Changes', sourceMovers: 'Source Changes', topFive: 'Top 5', noComparisonData: 'No comparison data.',
+    compare: 'Compare', compare_off: 'Compare Off', compare_elapsed: 'Same Progress', compare_full: 'Full Previous', currentPeriod: 'Current', previousPeriod: 'Previous', modelMovers: 'Model Changes', sourceMovers: 'Source Changes', topFive: 'Top 5', noComparisonData: 'No comparison data.', scaleUpper: 'Scale', scaleTooltip: 'Full bar equals {cost} absolute cost change.',
     tokenUsage: 'Token Usage', dailySessions: 'Daily Sessions', source: 'Source', project: 'Project',
     branch: 'Branch', time: 'Time', tokens: 'Tokens', cost: 'Cost', refresh: 'Refresh',
     sessionLog: 'Session Log',
@@ -82,7 +82,7 @@ const I18N = {
   zh: {
     title: '使用分析', to: '至', totalCost: '总费用', totalTokens: '总 Tokens',
     sessions: '会话数', prompts: 'Prompt 数', apiCalls: 'API 调用数', cacheHitRate: '缓存命中率', costByModel: '模型费用占比', costOverTime: '费用趋势',
-    compare: '对比', compare_off: '关闭对比', compare_elapsed: '相同进度', compare_full: '完整上期', currentPeriod: '当前周期', previousPeriod: '上一周期', modelMovers: '模型变化', sourceMovers: '来源变化', topFive: 'TOP 5', noComparisonData: '暂无对比数据。',
+    compare: '对比', compare_off: '关闭对比', compare_elapsed: '相同进度', compare_full: '完整上期', currentPeriod: '当前周期', previousPeriod: '上一周期', modelMovers: '模型变化', sourceMovers: '来源变化', topFive: 'TOP 5', noComparisonData: '暂无对比数据。', scaleUpper: '上限', scaleTooltip: '满格表示 {cost} 的绝对费用变化。',
     tokenUsage: 'Token 用量', dailySessions: '每日会话数', source: '来源', project: '项目',
     branch: '分支', time: '时间', tokens: 'Tokens', cost: '费用', refresh: '刷新',
     sessionLog: '会话记录',

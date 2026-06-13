@@ -47,6 +47,8 @@ function scheduleSessionRefresh() {
   }, 250);
 }
 
+const TREND_COST_EPSILON = 0.0000001;
+
 function pctSuffix(metric) {
   if (!metric || metric.delta_pct === undefined || metric.delta_pct === null || !isFinite(metric.delta_pct)) return '';
   const v = metric.delta_pct;
@@ -108,8 +110,9 @@ function renderStatDeltas(compare) {
       el.removeAttribute('title');
       return;
     }
-    el.textContent = formatDelta(metric, kind);
-    el.className = `delta ${deltaClass(metric, kind)}`;
+    const cls = deltaClass(metric, kind);
+    el.textContent = cls === 'equal' ? '-' : formatDelta(metric, kind);
+    el.className = `delta ${cls}`;
     el.title = `${t('previousPeriod')}: ${kind === 'cost' ? fmtCost(metric.previous || 0) : kind === 'cache' ? ((metric.previous || 0) * 100).toFixed(1) + '%' : fmt(Math.round(metric.previous || 0))}`;
   });
 }
@@ -163,6 +166,51 @@ function renderTrendCompareContext(data) {
   });
 }
 
+function niceCostCeil(value) {
+  const n = Math.abs(Number(value) || 0);
+  if (n < TREND_COST_EPSILON) return 0;
+  const base = Math.pow(10, Math.floor(Math.log10(n)));
+  const fraction = n / base;
+  if (fraction <= 1) return base;
+  if (fraction <= 2) return 2 * base;
+  if (fraction <= 5) return 5 * base;
+  return 10 * base;
+}
+
+function trendDeltaCostAbs(item) {
+  return Math.abs(Number(item && item.delta_cost) || 0);
+}
+
+function setTrendScaleChip(kind, scale) {
+  const chip = document.querySelector(`[data-trend-scale="${kind}"]`);
+  if (!chip) return;
+  const label = chip.querySelector('.trend-compare-chip-label');
+  if (!isCompareEnabled() || !scale) {
+    chip.hidden = true;
+    if (label) label.textContent = '';
+    chip.removeAttribute('data-tooltip');
+    chip.removeAttribute('aria-label');
+    return;
+  }
+
+  const scaleText = fmtCost(scale);
+  if (label) label.textContent = `${t('scaleUpper')} ${scaleText}`;
+  const tooltip = t('scaleTooltip').replace('{cost}', scaleText);
+  chip.dataset.tooltip = tooltip;
+  chip.setAttribute('aria-label', `${t('scaleUpper')} ${scaleText}, ${tooltip}`);
+  chip.hidden = false;
+}
+
+function hideTrendScaleChips() {
+  document.querySelectorAll('[data-trend-scale]').forEach(chip => {
+    chip.hidden = true;
+    const label = chip.querySelector('.trend-compare-chip-label');
+    if (label) label.textContent = '';
+    chip.removeAttribute('data-tooltip');
+    chip.removeAttribute('aria-label');
+  });
+}
+
 function renderTrendBreakdowns(data) {
   const modelBox = $('trend-model-breakdown');
   const sourceBox = $('trend-source-breakdown');
@@ -170,21 +218,25 @@ function renderTrendBreakdowns(data) {
   if (!isCompareEnabled() || !data || !data.breakdowns) {
     modelBox.innerHTML = '';
     sourceBox.innerHTML = '';
+    hideTrendScaleChips();
     return;
   }
 
   const displayName = (name, kind) => kind === 'source' && SOURCE_LABEL_KEYS[name] ? t(SOURCE_LABEL_KEYS[name]) : (name || '-');
 
   const renderList = (items, kind) => {
-    const visibleItems = (items || []).slice(0, 5);
+    const visibleItems = (items || []).filter(item => trendDeltaCostAbs(item) >= TREND_COST_EPSILON).slice(0, 5);
+    const avgDeltaCost = visibleItems.length > 0
+      ? visibleItems.reduce((sum, item) => sum + trendDeltaCostAbs(item), 0) / visibleItems.length
+      : 0;
+    const scale = niceCostCeil(avgDeltaCost * 2);
+    setTrendScaleChip(kind, scale);
     if (visibleItems.length === 0) return `<div class="trend-breakdown-empty">${esc(t('noComparisonData'))}</div>`;
     const rows = visibleItems.map((item, idx) => {
       const deltaCost = Number(item.delta_cost) || 0;
-      const rawDeltaPct = Number(item.delta_cost_pct);
-      const hasDeltaPct = item.delta_cost_pct !== undefined && item.delta_cost_pct !== null && isFinite(rawDeltaPct);
       const cls = deltaClass({ delta: deltaCost, delta_pct: item.delta_cost_pct }, 'cost');
-      const changePct = Math.abs(deltaCost) < 0.0000001 ? 0 : (hasDeltaPct ? Math.min(100, Math.abs(rawDeltaPct)) : 100);
-      const changeWidth = (changePct / 2).toFixed(1);
+      const changeRatio = scale > 0 ? Math.min(1, trendDeltaCostAbs(item) / scale) : 0;
+      const changeWidth = (changeRatio * 50).toFixed(1);
       const name = displayName(item.name, kind);
       const deltaText = `${signedFormatted(deltaCost, fmtCost)}${pctSuffix({ delta_pct: item.delta_cost_pct })}`;
       const currentDetail = `${fmt(item.current_tokens || 0)} ${t('tokens')} | ${fmt(item.current_calls || 0)} ${t('calls')}`;
