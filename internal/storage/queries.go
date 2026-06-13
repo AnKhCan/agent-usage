@@ -260,7 +260,7 @@ func (d *DB) GetPricingOverrides() ([]PricingOverride, error) {
 	rows, err := d.db.Query(`SELECT model,input_cost_per_token,output_cost_per_token,
 		cache_read_input_token_cost,cache_creation_input_token_cost,note,
 		COALESCE(created_at,''),COALESCE(updated_at,'')
-		FROM pricing_overrides ORDER BY updated_at DESC, model ASC`)
+		FROM pricing_overrides ORDER BY model ASC`)
 	if err != nil {
 		return nil, err
 	}

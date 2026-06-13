@@ -259,7 +259,7 @@ function baseOpt() {
   const tc = getThemeColors();
   return {
     backgroundColor: tc.bg,
-    textStyle: { color: tc.text, fontFamily: 'Inter, sans-serif' },
+    textStyle: { color: tc.text, fontFamily: 'Consolas, sans-serif' },
     grid: { left: 60, right: 30, top: 40, bottom: 40 },
     tooltip: { trigger: 'axis', backgroundColor: tc.tooltipBg, borderColor: tc.tooltipBorder, textStyle: { color: tc.text }, padding: [12, 16], borderRadius: 8 }
   };
