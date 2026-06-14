@@ -225,6 +225,12 @@ function buildControls() {
 
   $('sel-theme').innerHTML = buildOpts(['system', 'light', 'dark'], state.theme, t);
   $('sel-lang').innerHTML = `<option value="en" ${state.lang === 'en' ? 'selected' : ''}>EN</option><option value="zh" ${state.lang === 'zh' ? 'selected' : ''}>ZH</option>`;
+  // Mirror theme/lang into the model-management page's own top bar (which has
+  // separate select elements so the two pages stay structurally decoupled).
+  const mTheme = $('models-sel-theme');
+  const mLang = $('models-sel-lang');
+  if (mTheme) { mTheme.innerHTML = $('sel-theme').innerHTML; mTheme.value = state.theme; }
+  if (mLang) { mLang.innerHTML = $('sel-lang').innerHTML; mLang.value = state.lang; }
   $('sel-granularity').innerHTML = buildOpts(GRANULARITIES, state.granularity, v => t('gran_' + v));
   $('sel-compare-mode').innerHTML = buildOpts(COMPARE_MODES, state.compareMode, v => t('compare_' + v));
   $('sel-refresh-interval').innerHTML = buildOpts(REFRESH_INTERVALS, state.refreshInterval, v => v >= 60 ? (v / 60) + ' ' + t('unitMin') : v + ' ' + t('unitSec'));
@@ -240,7 +246,7 @@ function buildControls() {
 }
 
 // ── Events Binding ──
-$('sel-theme').onchange = e => { persist('theme', e.target.value); applyTheme(); };
+$('sel-theme').onchange = e => { persist('theme', e.target.value); applyTheme(); buildControls(); };
 $('sel-lang').onchange = e => {
   persist('lang', e.target.value);
   buildControls();
@@ -250,6 +256,11 @@ $('sel-lang').onchange = e => {
   refresh();
   applyAutoRefresh();
 };
+// The model-management page has its own theme/lang selects (independent DOM).
+// Forward their changes to the dashboard selects so all side effects live in
+// one place; buildControls() keeps the two in sync on re-render.
+$('models-sel-theme').onchange = e => { $('sel-theme').value = e.target.value; $('sel-theme').dispatchEvent(new Event('change')); };
+$('models-sel-lang').onchange = e => { $('sel-lang').value = e.target.value; $('sel-lang').dispatchEvent(new Event('change')); };
 $('sel-granularity').onchange = e => { persist('granularity', e.target.value); refresh(); };
 $('sel-compare-mode').onchange = e => {
   const wasEnabled = isCompareEnabled();

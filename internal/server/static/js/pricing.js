@@ -70,19 +70,26 @@ function tf(key, vars = {}) {
 }
 
 function renderPricingStatus() {
-  const box = $('pricing-status-grid');
-  if (!box) return;
   const s = pricingState.status || {};
-  const cells = [
+  const ops = [
     [t('status'), s.last_error ? s.last_error : t('ok'), s.last_error ? 'warning' : ''],
     [t('lastSync'), formatPricingTime(s.last_sync_at), ''],
     [t('syncedModels'), s.last_model_count || '0', ''],
-    [t('cachePath'), s.cache_path || '-', ''],
-    [t('sourceURL'), s.source_url || '-', ''],
-    [t('missing'), String(s.missing_count || 0), ''],
-    [t('overrides'), String(s.override_count || 0), ''],
-    [t('lastDownload'), s.last_download_at ? formatPricingTime(s.last_download_at) : t('never'), '']
+    [t('lastDownload'), s.last_download_at ? formatPricingTime(s.last_download_at) : t('never'), ''],
+    [t('missing'), String(s.missing_count || 0), s.missing_count ? 'warning' : ''],
+    [t('overrides'), String(s.override_count || 0), '']
   ];
+  const config = [
+    [t('cachePath'), s.cache_path || '-'],
+    [t('sourceURL'), s.source_url || '-']
+  ];
+  setStatusGrid('pricing-status-grid', ops);
+  setStatusGrid('pricing-config-grid', config);
+}
+
+function setStatusGrid(id, cells) {
+  const box = $(id);
+  if (!box) return;
   box.innerHTML = cells.map(([label, value, cls]) => {
     const isURL = typeof value === 'string' && /^https?:\/\//.test(value);
     const inner = isURL
@@ -90,7 +97,7 @@ function renderPricingStatus() {
       : esc(value);
     return `<div class="pricing-status-item">
     <div class="pricing-status-label">${esc(label)}</div>
-    <div class="pricing-status-value ${cls}" title="${esc(value)}">${inner}</div>
+    <div class="pricing-status-value ${cls || ''}" title="${esc(value)}">${inner}</div>
   </div>`;
   }).join('');
 }
@@ -146,6 +153,7 @@ function renderPricingPageFromState() {
   renderPricingStatus();
   renderMissingPrices();
   renderPricingOverrides();
+  refreshCanonicalDatalist();
 }
 
 async function loadPricingPage() {
@@ -250,7 +258,7 @@ async function deletePricingOverride(model) {
     await loadPricingPage();
     await updateModelManagementBadge();
   } catch (err) {
-    alert(`${t('deleteFailed')}: ${err.message}`);
+    toastError(`${t('deleteFailed')}: ${err.message}`);
   }
 }
 
@@ -262,8 +270,9 @@ async function syncPricingNow() {
     await pricingRequest('sync', { method: 'POST' });
     await loadPricingPage();
     await updateModelManagementBadge();
+    toastOk(t('saved'));
   } catch (err) {
-    alert(`${t('syncFailed')}: ${err.message}`);
+    toastError(`${t('syncFailed')}: ${err.message}`);
   } finally {
     btn.classList.remove('loading');
     btn.disabled = false;
@@ -336,6 +345,20 @@ function renderAliasCandidates() {
 function renderAliasPageFromState() {
   renderAliases();
   renderAliasCandidates();
+  refreshCanonicalDatalist();
+}
+
+// Populate the canonical-model datalist from all known model names so the alias
+// editor can offer autocomplete suggestions and reduce typos.
+function refreshCanonicalDatalist() {
+  const dl = $('alias-canonical-options');
+  if (!dl) return;
+  const names = new Set();
+  (pricingState.overrides || []).forEach(o => { if (o && o.model) names.add(o.model); });
+  (pricingState.missing || []).forEach(m => { if (m && m.model) names.add(m.model); });
+  (modelState.aliases || []).forEach(a => { if (a && a.canonical_model) names.add(a.canonical_model); });
+  (modelState.candidates || []).forEach(c => { if (c && c.canonical_model) names.add(c.canonical_model); });
+  dl.innerHTML = Array.from(names).sort((a, b) => a.localeCompare(b)).map(n => `<option value="${esc(n)}">`).join('');
 }
 
 async function loadAliasPage() {
@@ -420,7 +443,7 @@ async function deleteModelAlias(alias) {
     clearAliasEditor();
     await updateModelManagementBadge();
   } catch (err) {
-    alert(`${t('deleteFailed')}: ${err.message}`);
+    toastError(`${t('deleteFailed')}: ${err.message}`);
   }
 }
 
@@ -440,7 +463,7 @@ async function applyAliasCandidate(index) {
     await loadAliasPage();
     await updateModelManagementBadge();
   } catch (err) {
-    alert(`${t('saveFailed')}: ${err.message}`);
+    toastError(`${t('saveFailed')}: ${err.message}`);
   } finally {
     btns.forEach(btn => btn.disabled = false);
   }
@@ -464,6 +487,8 @@ function activateModelsTab(tab) {
     btn.classList.toggle('active', active);
     btn.setAttribute('aria-selected', active ? 'true' : 'false');
   });
+  const tabsEl = document.querySelector('.models-tabs');
+  if (tabsEl) tabsEl.setAttribute('data-active', modelState.activeTab);
   const pricingPanel = $('models-pricing-panel');
   const aliasesPanel = $('models-aliases-panel');
   if (pricingPanel) pricingPanel.hidden = modelState.activeTab !== 'pricing';
@@ -502,11 +527,13 @@ function setModelRouteVisible() {
 function initPricingPage() {
   const entry = $('model-management-btn');
   if (entry) entry.onclick = () => { location.hash = 'models/pricing'; };
-  $('pricing-back-btn').onclick = () => {
+  const backToDashboard = () => {
     history.pushState('', document.title, location.pathname + location.search);
     setModelRouteVisible();
     refresh();
   };
+  const backIcon = $('models-back-icon');
+  if (backIcon) backIcon.onclick = backToDashboard;
   $('pricing-sync-btn').onclick = syncPricingNow;
   $('pricing-editor').onsubmit = savePricingOverride;
   $('pricing-cancel-btn').onclick = closePricingEditor;

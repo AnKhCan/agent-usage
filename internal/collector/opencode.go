@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -81,12 +82,28 @@ func (c *OpenCodeCollector) processDB(dbPath string) error {
 		return err
 	}
 
-	// Open source db read-only
-	srcDB, err := sql.Open("sqlite", dbPath+"?mode=ro&_pragma=journal_mode(wal)&_pragma=busy_timeout(3000)")
+	// Open the source db read-only. We intentionally do NOT set
+	// journal_mode=wal here: forcing WAL on a read-only handle requires write
+	// access to the -wal/-shm sidecar files, and when the host app (e.g. the
+	// mimocode CLI) is currently holding or locked the db, modernc/sqlite fails
+	// at query time with SQLITE_CANTOPEN (14) — surfacing as the misleading
+	// "unable to open database file: out of memory (14)". Read-only mode can
+	// read any journal mode (rollback or WAL) without needing sidecar writes.
+	// busy_timeout lets us wait briefly if the writer holds the file.
+	srcDB, err := sql.Open("sqlite", dbPath+"?mode=ro&_pragma=busy_timeout(3000)")
 	if err != nil {
 		return fmt.Errorf("open %s db: %w", c.source, err)
 	}
 	defer srcDB.Close()
+
+	// sql.Open is lazy — force the actual file open now (bounded) so that a
+	// locked/unreadable db fails fast with a clear message instead of surfacing
+	// as a generic query error later.
+	pingCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := srcDB.PingContext(pingCtx); err != nil {
+		return fmt.Errorf("open %s db (file locked or unreadable): %w", c.source, err)
+	}
 
 	// Query assistant messages newer than watermark
 	rows, err := srcDB.Query(`

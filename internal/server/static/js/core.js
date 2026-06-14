@@ -56,6 +56,51 @@ function utcToLocalLabel(s) {
   return s;
 }
 
+// ── Toast ──
+// Lightweight, dependency-free notifications. Replaces native alert() so the
+// dashboard keeps a consistent visual language. Supports types: error, ok, info.
+let toastContainer = null;
+let toastSeq = 0;
+function ensureToastContainer() {
+  if (toastContainer && document.body.contains(toastContainer)) return toastContainer;
+  toastContainer = document.createElement('div');
+  toastContainer.className = 'toast-container';
+  toastContainer.setAttribute('aria-live', 'polite');
+  toastContainer.setAttribute('role', 'status');
+  document.body.appendChild(toastContainer);
+  return toastContainer;
+}
+function showToast(message, opts = {}) {
+  const type = ['error', 'ok', 'info'].includes(opts.type) ? opts.type : 'info';
+  const duration = Number.isFinite(opts.duration) ? opts.duration : 4200;
+  const container = ensureToastContainer();
+  const id = ++toastSeq;
+  const node = document.createElement('div');
+  node.className = `toast toast-${type}`;
+  node.dataset.toastId = String(id);
+  node.innerHTML = `<span class="toast-icon" aria-hidden="true"></span><span class="toast-message"></span><button type="button" class="toast-close" aria-label="${esc(t('close'))}">×</button>`;
+  node.querySelector('.toast-message').textContent = message;
+  const dismiss = () => {
+    if (!container.contains(node)) return;
+    node.classList.add('toast-out');
+    node.addEventListener('transitionend', () => node.remove(), { once: true });
+    setTimeout(() => { if (container.contains(node)) node.remove(); }, 250);
+  };
+  node.querySelector('.toast-close').onclick = dismiss;
+  container.appendChild(node);
+  requestAnimationFrame(() => node.classList.add('toast-in'));
+  // Use a reassignable handle so hover-pause can clear the live timer without
+  // leaving stray timers behind. Reusing `timer` (not const) ensures
+  // mouseenter cancels the *current* timer, and mouseleave schedules a fresh
+  // one — no accumulation across multiple hover cycles.
+  let timer = duration > 0 ? setTimeout(dismiss, duration) : 0;
+  node.addEventListener('mouseenter', () => { if (timer) { clearTimeout(timer); timer = 0; } });
+  node.addEventListener('mouseleave', () => { if (duration > 0 && !timer) timer = setTimeout(dismiss, duration); });
+  return dismiss;
+}
+function toastError(msg, opts) { return showToast(msg, { ...opts, type: 'error' }); }
+function toastOk(msg, opts) { return showToast(msg, { ...opts, type: 'ok' }); }
+
 // ── i18n ──
 const I18N = {
   en: {
@@ -73,7 +118,7 @@ const I18N = {
     model: 'Model', calls: 'Calls', allSources: 'All Sources', claudeCode: 'Claude Code', codex: 'Codex', openClaw: 'OpenClaw', openCode: 'OpenCode', mimoCode: 'MiMo Code', kiro: 'Kiro CLI', pi: 'Pi',
     filterProject: 'Filter by project...', justNow: 'just now', mAgo: 'm ago', hAgo: 'h ago', dAgo: 'd ago',
     noSessions: 'No sessions found in this period.', unitMin: 'min', unitSec: 'sec',
-    apply: 'Apply', previousMonth: 'Previous month', nextMonth: 'Next month', dateRange: 'Date range',
+    apply: 'Apply', previousMonth: 'Previous month', nextMonth: 'Next month', dateRange: 'Date range', close: 'Close',
     pricingKicker: 'Pricing', pricingTitle: 'Model Prices', modelsKicker: 'Models', modelManagement: 'Model Management', pricesTab: 'Prices', aliasesTab: 'Aliases', syncPrices: 'Sync Prices', backToDashboard: 'Dashboard',
     manualPrice: 'Manual Price', inputPrice: 'Input ($/1M)', outputPrice: 'Output ($/1M)', cacheReadPrice: 'Cache Read ($/1M)', cacheCreatePrice: 'Cache Write ($/1M)', note: 'Note', cancel: 'Cancel', savePrice: 'Save Price',
     missingPrices: 'Missing Prices', manualOverrides: 'Manual Overrides', setPrice: 'Set Price', edit: 'Edit', delete: 'Delete', noMissingPrices: 'No missing model prices.', noOverrides: 'No manual overrides.',
@@ -95,7 +140,7 @@ const I18N = {
     model: '模型', calls: '调用次数', allSources: '全部来源', claudeCode: 'Claude Code', codex: 'Codex', openClaw: 'OpenClaw', openCode: 'OpenCode', mimoCode: 'MiMo Code', kiro: 'Kiro CLI', pi: 'Pi',
     filterProject: '按项目筛选...', justNow: '刚刚', mAgo: '分钟前', hAgo: '小时前', dAgo: '天前',
     noSessions: '当前时间段内暂无会话数据。', unitMin: '分钟', unitSec: '秒',
-    apply: '应用', previousMonth: '上个月', nextMonth: '下个月', dateRange: '日期范围',
+    apply: '应用', previousMonth: '上个月', nextMonth: '下个月', dateRange: '日期范围', close: '关闭',
     pricingKicker: '价格', pricingTitle: '模型价格', modelsKicker: '', modelManagement: '模型管理', pricesTab: '价格', aliasesTab: '别名', syncPrices: '同步价格', backToDashboard: '仪表盘',
     manualPrice: '手动价格', inputPrice: '输入', outputPrice: '输出', cacheReadPrice: '缓存读取', cacheCreatePrice: '缓存写入', note: '备注', cancel: '取消', savePrice: '保存价格',
     missingPrices: '缺失价格', manualOverrides: '手动覆盖', setPrice: '设置价格', edit: '编辑', delete: '删除', noMissingPrices: '暂无缺失价格的模型。', noOverrides: '暂无手动覆盖。',
@@ -158,7 +203,7 @@ function eventIncludesElement(e, el) {
   return el.contains(e.target);
 }
 
-const ENHANCED_SELECT_IDS = ['sel-granularity', 'sel-compare-mode', 'filter-source', 'filter-model', 'sel-refresh-interval', 'sel-theme', 'sel-lang'];
+const ENHANCED_SELECT_IDS = ['sel-granularity', 'sel-compare-mode', 'filter-source', 'filter-model', 'sel-refresh-interval', 'sel-theme', 'sel-lang', 'models-sel-theme', 'models-sel-lang'];
 const customSelects = new Map();
 
 function t(key) { return (I18N[state.lang] || I18N.en)[key] || key; }

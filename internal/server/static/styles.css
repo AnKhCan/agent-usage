@@ -56,12 +56,13 @@ body {
 }
 .model-management-btn svg { width: 17px; height: 17px; flex: 0 0 auto; }
 .model-management-badge {
-  position: absolute; top: -6px; right: -6px;
-  min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px;
+  position: absolute; top: -7px; right: -7px;
+  min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
   display: inline-flex; align-items: center; justify-content: center;
-  background: var(--delta-decrease-2); color: #fff; font-size: 9px; font-weight: 800;
+  background: var(--orange); color: #fff; font-size: 10px; font-weight: 800;
   font-family: 'Fira Code', 'SF Mono', monospace;
   line-height: 1; border: 2px solid var(--bg); box-shadow: 0 2px 6px rgba(0,0,0,0.28);
+  box-sizing: border-box;
 }
 .model-management-badge[hidden] { display: none; }
 .top-bar-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex: 1; }
@@ -89,6 +90,8 @@ select.enhanced-native-select {
 .custom-select-wrap[data-select-id="sel-refresh-interval"] { width: 112px; }
 .custom-select-wrap[data-select-id="sel-theme"] { width: 118px; }
 .custom-select-wrap[data-select-id="sel-lang"] { width: 72px; }
+.custom-select-wrap[data-select-id="models-sel-theme"] { width: 118px; }
+.custom-select-wrap[data-select-id="models-sel-lang"] { width: 72px; }
 .custom-select-trigger {
   width: 100%; height: 34px; min-width: 0;
   border: 1px solid var(--border); border-radius: 8px;
@@ -571,42 +574,101 @@ td:nth-child(2) { max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
 #global-loader.loading { transform: scaleX(1); animation: load-pulse 1s infinite alternate; }
 @keyframes load-pulse { 0% { opacity: 0.6; } 100% { opacity: 1; } }
 
+/* ── Toast ── */
+.toast-container {
+  position: fixed; right: 20px; bottom: 20px; z-index: 10000;
+  display: flex; flex-direction: column; gap: 10px;
+  max-width: min(380px, calc(100vw - 32px));
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto; display: grid; grid-template-columns: 18px 1fr auto; align-items: start;
+  gap: 10px; padding: 11px 12px; border-radius: 10px;
+  background: var(--card); border: 1px solid var(--border); color: var(--text);
+  box-shadow: 0 18px 50px rgba(0,0,0,0.32); font-size: 13px; line-height: 1.4;
+  opacity: 0; transform: translateX(12px); transition: opacity 0.2s ease, transform 0.2s ease;
+  border-left: 3px solid var(--accent);
+}
+.toast.toast-in { opacity: 1; transform: translateX(0); }
+.toast.toast-out { opacity: 0; transform: translateX(12px); }
+.toast.toast-error { border-left-color: var(--delta-decrease-2); }
+.toast.toast-ok { border-left-color: var(--green); }
+.toast.toast-info { border-left-color: var(--accent); }
+.toast-icon {
+  width: 18px; height: 18px; flex: 0 0 18px; border-radius: 999px;
+  margin-top: 1px; background: var(--accent);
+}
+.toast-error .toast-icon { background: var(--delta-decrease-2); }
+.toast-ok .toast-icon { background: var(--green); }
+.toast-message { min-width: 0; word-break: break-word; overflow-wrap: anywhere; }
+.toast-close {
+  background: transparent; border: 0; color: var(--muted); cursor: pointer;
+  font-size: 18px; line-height: 1; padding: 0 2px; border-radius: 6px; transition: color 0.15s, background 0.15s;
+}
+.toast-close:hover { color: var(--text); background: var(--hover); }
+@media (max-width: 520px) {
+  .toast-container { left: 16px; right: 16px; bottom: 16px; max-width: none; }
+}
+
 /* ── Pricing Page ── */
-body.models-mode .top-bar-controls { display: none; }
+/* Dashboard and model-management have fully separate top bars. Hide the
+   dashboard top bar entirely while in models-mode; the models view ships its
+   own sticky action bar (see .models-top-bar below). */
+body.models-mode .top-bar { display: none; }
 .pricing-view { padding: 10px 0 44px; }
-.pricing-page-head {
-  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
-  margin: 6px 0 16px;
+
+/* Independent top bar for the model-management page. Mirrors the dashboard
+   top-bar's look (sticky, blurred, bottom border) so the two pages feel
+   consistent while staying structurally decoupled. */
+.models-top-bar {
+  position: sticky; top: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  flex-wrap: wrap; min-height: 34px;
+  background: rgba(var(--bg-rgb), 0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border); margin: -10px 0 16px; padding: 8px 0;
 }
-.pricing-page-head h1 { font-size: 28px; line-height: 1.1; letter-spacing: 0; }
-.pricing-kicker {
-  color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase;
-  letter-spacing: 0.5px;
+.models-top-bar-title { min-width: 0; }
+.models-top-bar-title h1 { font-size: 20px; line-height: 1.1; letter-spacing: 0; font-weight: 700; }
+.models-top-bar-actions {
+  margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end;
 }
-.pricing-page-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.models-top-bar-actions .separator { margin: 0 4px; }
 .models-tabs {
+  position: relative;
   display: inline-grid; grid-template-columns: repeat(2, minmax(108px, 1fr));
-  align-items: center; gap: 3px; padding: 3px;
-  border: 1px solid var(--border); border-radius: 8px;
+  align-items: center; gap: 0; padding: 3px;
+  border: 1px solid var(--border); border-radius: 9px;
   background: color-mix(in srgb, var(--select-bg) 88%, var(--hover) 12%);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), var(--shadow);
   margin: 0 0 16px;
 }
-.models-tab {
-  min-width: 0; height: 34px; padding: 0 12px; border: 0; border-radius: 6px;
-  background: transparent; color: var(--muted); cursor: pointer; font: inherit; font-size: 13px; font-weight: 750;
-  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
-  transition: background 0.16s, color 0.16s, box-shadow 0.16s;
+/* Sliding thumb: a single background pill that translates between the two
+   equal-width tabs. Driven by [data-active] on .models-tabs. */
+.models-tab-thumb {
+  position: absolute; top: 3px; left: 3px;
+  width: calc(50% - 3px); height: calc(100% - 6px);
+  border-radius: 6px; background: var(--accent);
+  transform: translateX(0); z-index: 0;
+  transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.models-tab:hover { color: var(--text); background: var(--hover); }
+.models-tabs[data-active="aliases"] .models-tab-thumb { transform: translateX(100%); }
+.models-tab {
+  position: relative; z-index: 1;
+  min-width: 0; height: 32px; padding: 0 14px; border: 0; border-radius: 6px;
+  background: transparent; color: var(--muted); cursor: pointer; font: inherit; font-size: 13px; font-weight: 650;
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  transition: color 0.16s;
+}
+.models-tab:hover:not(.active) { color: var(--text); }
 .models-tab:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--accent-bg); }
 .models-tab-icon { width: 15px; height: 15px; flex: 0 0 auto; stroke-width: 2.1; }
-.models-tab.active {
-  color: #fff; background: var(--accent);
-  box-shadow: 0 6px 14px rgba(37,99,235,0.24);
-}
+.models-tab.active { color: #fff; }
 .models-tab-panel[hidden] { display: none; }
 .pricing-status-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.pricing-config-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.pricing-config-grid:empty { display: none; }
+.pricing-config-grid .pricing-status-value { white-space: normal; word-break: break-all; }
+.pricing-config-grid .pricing-status-value a { color: var(--accent); text-decoration: none; word-break: break-all; }
+.pricing-config-grid .pricing-status-value a:hover { text-decoration: underline; }
 .pricing-status-item {
   min-width: 0; background: var(--card); border: 1px solid var(--border); border-radius: 10px;
   padding: 12px 14px; box-shadow: var(--shadow);
@@ -690,7 +752,7 @@ input[type=number]:hover, input[type=number]:focus { border-color: var(--accent)
 }
 .pricing-mini-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-bg); }
 .pricing-mini-btn.danger:hover { border-color: var(--delta-decrease-2); color: var(--delta-decrease-2); background: color-mix(in srgb, var(--delta-decrease-2) 12%, transparent); }
-.alias-grid { grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr); }
+.alias-grid { grid-template-columns: 1fr; }
 .alias-source-pill {
   display: inline-flex; align-items: center; justify-content: center;
   height: 24px; padding: 0 8px; border-radius: 999px;
@@ -709,7 +771,8 @@ input[type=number]:hover, input[type=number]:focus { border-color: var(--accent)
   display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(120px, 0.45fr) minmax(0, 1fr) auto;
   align-items: center; gap: 12px; padding: 11px 14px; border-top: 1px solid var(--border);
 }
-.alias-candidate-row:hover { background: color-mix(in srgb, var(--hover) 42%, transparent); }
+.alias-candidate-row:first-child { border-top: 0; }
+.alias-candidate-row:hover { background: var(--hover); }
 .alias-candidate-main,
 .alias-candidate-current { min-width: 0; }
 .alias-candidate-meta {
@@ -733,7 +796,8 @@ input[type=number]:hover, input[type=number]:focus { border-color: var(--accent)
   .trend-mover-card,
   .trend-breakdown-row,
   .stat-card .delta,
-  .model-management-btn {
+  .model-management-btn,
+  .models-tab-thumb {
     transition: none !important;
     animation: none !important;
   }
@@ -759,9 +823,9 @@ input[type=number]:hover, input[type=number]:focus { border-color: var(--accent)
   .calendar-grid { grid-template-columns: 1fr; }
   .separator { display: none; }
   .trend-insight-grid { grid-template-columns: 1fr; }
-  .pricing-status-grid, .pricing-grid, .pricing-form-grid, .alias-form-grid { grid-template-columns: 1fr; }
-  .pricing-page-head { flex-direction: column; align-items: stretch; }
-  .pricing-page-actions { justify-content: flex-start; }
+  .pricing-status-grid, .pricing-config-grid, .pricing-grid, .pricing-form-grid, .alias-form-grid { grid-template-columns: 1fr; }
+  .models-top-bar { flex-direction: column; align-items: stretch; }
+  .models-top-bar-actions { margin-left: 0; justify-content: flex-start; }
   .models-tabs { width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .alias-table { min-width: 0; }
   .alias-table thead { display: none; }
