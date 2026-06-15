@@ -220,8 +220,19 @@ func TestPricingOverridesAndMissingModels(t *testing.T) {
 	}
 }
 
+func importGLMAliases(t *testing.T, db *DB) {
+	t.Helper()
+	if _, err := db.ImportConfigAliases(map[string]string{
+		"GLM-5.1":         "glm-5.1",
+		"zai-org/GLM-5.1": "glm-5.1",
+	}); err != nil {
+		t.Fatalf("ImportConfigAliases GLM: %v", err)
+	}
+}
+
 func TestModelAliasesAggregateGLMVariants(t *testing.T) {
 	db := tempDB(t)
+	importGLMAliases(t, db)
 	ts := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
 	records := []*UsageRecord{
 		{Source: "codex", SessionID: "s1", Model: "glm-5.1", InputTokens: 100, OutputTokens: 10, Timestamp: ts},
@@ -251,6 +262,7 @@ func TestModelAliasesAggregateGLMVariants(t *testing.T) {
 
 func TestModelAliasDedupUsesRawModel(t *testing.T) {
 	db := tempDB(t)
+	importGLMAliases(t, db)
 	ts := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
 	records := []*UsageRecord{
 		{Source: "codex", SessionID: "s1", Model: "GLM-5.1", InputTokens: 100, OutputTokens: 50, Timestamp: ts},
@@ -319,8 +331,8 @@ func TestDeleteModelAliasRestoresRawCanonical(t *testing.T) {
 	if err := db.DeleteModelAlias("provider/model-y"); err != nil {
 		t.Fatalf("DeleteModelAlias: %v", err)
 	}
-	if err := db.ApplyModelAliases(); err != nil {
-		t.Fatalf("ApplyModelAliases: %v", err)
+	if err := db.ApplyModelAliasesForRawModels([]string{"provider/model-y"}); err != nil {
+		t.Fatalf("ApplyModelAliasesForRawModels: %v", err)
 	}
 	var model string
 	if err := db.db.QueryRow("SELECT model FROM usage_records").Scan(&model); err != nil {
@@ -331,13 +343,71 @@ func TestDeleteModelAliasRestoresRawCanonical(t *testing.T) {
 	}
 }
 
+func TestApplyModelAliasesForRawModelsAndTargetedCostRecalc(t *testing.T) {
+	db := tempDB(t)
+	ts := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	records := []*UsageRecord{
+		{Source: "codex", SessionID: "s1", Model: "provider/model-a", InputTokens: 100, OutputTokens: 50, CostUSD: 9.99, Timestamp: ts},
+		{Source: "codex", SessionID: "s2", Model: "provider/model-b", InputTokens: 200, OutputTokens: 50, CostUSD: 7.77, Timestamp: ts.Add(time.Second)},
+	}
+	if err := db.InsertUsageBatch(records); err != nil {
+		t.Fatalf("InsertUsageBatch: %v", err)
+	}
+	if err := db.UpsertModelAlias(ModelAlias{Alias: "provider/model-a", CanonicalModel: "model-a"}); err != nil {
+		t.Fatalf("UpsertModelAlias: %v", err)
+	}
+	if err := db.ApplyModelAliasesForRawModels([]string{"provider/model-a"}); err != nil {
+		t.Fatalf("ApplyModelAliasesForRawModels: %v", err)
+	}
+	calcFn := func(input, output, cc, cr int64, p [4]float64) float64 {
+		return float64(input)*p[0] + float64(output)*p[1]
+	}
+	if err := db.RecalcAllCostsForRawModels(map[string][4]float64{"model-a": {0.01, 0.02, 0, 0}}, calcFn, []string{"provider/model-a"}); err != nil {
+		t.Fatalf("RecalcAllCostsForRawModels: %v", err)
+	}
+
+	got := map[string]struct {
+		model string
+		cost  float64
+	}{}
+	rows, err := db.db.Query("SELECT raw_model, model, cost_usd FROM usage_records")
+	if err != nil {
+		t.Fatalf("query usage: %v", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var raw, model string
+		var cost float64
+		if err := rows.Scan(&raw, &model, &cost); err != nil {
+			t.Fatalf("scan usage: %v", err)
+		}
+		got[raw] = struct {
+			model string
+			cost  float64
+		}{model: model, cost: cost}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("usage rows: %v", err)
+	}
+	if got["provider/model-a"].model != "model-a" || got["provider/model-a"].cost != 2 {
+		t.Fatalf("target row not canonicalized/recalculated: %+v", got["provider/model-a"])
+	}
+	if got["provider/model-b"].model != "provider/model-b" || got["provider/model-b"].cost != 7.77 {
+		t.Fatalf("unrelated row should not be touched: %+v", got["provider/model-b"])
+	}
+}
+
 func TestImportConfigAliasesDoesNotOverwriteManualAlias(t *testing.T) {
 	db := tempDB(t)
 	if err := db.UpsertModelAlias(ModelAlias{Alias: "raw-model", CanonicalModel: "manual-model", Source: "manual"}); err != nil {
 		t.Fatalf("UpsertModelAlias: %v", err)
 	}
-	if err := db.ImportConfigAliases(map[string]string{"raw-model": "config-model", "other-raw": "other-model"}); err != nil {
+	changed, err := db.ImportConfigAliases(map[string]string{"raw-model": "config-model", "other-raw": "other-model"})
+	if err != nil {
 		t.Fatalf("ImportConfigAliases: %v", err)
+	}
+	if !changed {
+		t.Fatal("expected config import to report changes")
 	}
 	aliases, err := db.GetModelAliases()
 	if err != nil {
@@ -352,6 +422,28 @@ func TestImportConfigAliasesDoesNotOverwriteManualAlias(t *testing.T) {
 	}
 	if got["other-raw"].CanonicalModel != "other-model" || got["other-raw"].Source != "config" {
 		t.Fatalf("config alias not imported: %+v", got["other-raw"])
+	}
+
+	changed, err = db.ImportConfigAliases(map[string]string{})
+	if err != nil {
+		t.Fatalf("ImportConfigAliases empty: %v", err)
+	}
+	if !changed {
+		t.Fatal("expected removed config alias to report changes")
+	}
+	aliases, err = db.GetModelAliases()
+	if err != nil {
+		t.Fatalf("GetModelAliases after sync delete: %v", err)
+	}
+	got = map[string]ModelAlias{}
+	for _, a := range aliases {
+		got[a.Alias] = a
+	}
+	if _, ok := got["other-raw"]; ok {
+		t.Fatalf("expected removed config alias other-raw, got %+v", got["other-raw"])
+	}
+	if got["raw-model"].CanonicalModel != "manual-model" || got["raw-model"].Source != "manual" {
+		t.Fatalf("manual alias should remain after config sync delete: %+v", got["raw-model"])
 	}
 }
 

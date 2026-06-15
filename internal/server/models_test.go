@@ -14,15 +14,15 @@ import (
 func TestModelsStatusCountsBadgeInputs(t *testing.T) {
 	db := tempServerDB(t)
 	ts := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	if err := db.UpsertModelAlias(storage.ModelAlias{Alias: "provider/model-a", CanonicalModel: "model-a"}); err != nil {
+		t.Fatalf("UpsertModelAlias: %v", err)
+	}
 	records := []*storage.UsageRecord{
-		{Source: "codex", SessionID: "s1", Model: "glm-5.1", InputTokens: 100, OutputTokens: 50, Timestamp: ts},
-		{Source: "codex", SessionID: "s2", Model: "zai-org/GLM-5.1", InputTokens: 200, OutputTokens: 50, Timestamp: ts.Add(time.Second)},
+		{Source: "codex", SessionID: "s1", Model: "model-a", InputTokens: 100, OutputTokens: 50, Timestamp: ts},
+		{Source: "codex", SessionID: "s2", Model: "provider/model-a", InputTokens: 200, OutputTokens: 50, Timestamp: ts.Add(time.Second)},
 	}
 	if err := db.InsertUsageBatch(records); err != nil {
 		t.Fatalf("InsertUsageBatch: %v", err)
-	}
-	if err := db.UpsertModelAlias(storage.ModelAlias{Alias: "raw-a", CanonicalModel: "model-a"}); err != nil {
-		t.Fatalf("UpsertModelAlias: %v", err)
 	}
 
 	s := &Server{db: db}

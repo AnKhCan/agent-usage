@@ -16,6 +16,9 @@ type DB struct {
 }
 
 // UsageRecord represents a single API call's token usage and cost.
+// Model is resolved to the canonical model before storage. RawModel preserves
+// the source-reported model name and is part of deduplication; collectors should
+// pass a stable raw model name, or leave RawModel empty to treat Model as raw.
 type UsageRecord struct {
 	ID                       int64
 	Source                   string // "claude" or "codex"
@@ -91,6 +94,7 @@ func migrate(db *sql.DB) error {
 		CREATE INDEX IF NOT EXISTS idx_usage_timestamp ON usage_records(timestamp);
 		CREATE INDEX IF NOT EXISTS idx_usage_session ON usage_records(session_id);
 		CREATE INDEX IF NOT EXISTS idx_usage_source ON usage_records(source);
+		CREATE INDEX IF NOT EXISTS idx_usage_raw_model ON usage_records(raw_model);
 
 		CREATE TABLE IF NOT EXISTS sessions (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -203,6 +207,11 @@ func migrate(db *sql.DB) error {
 				UPDATE usage_records SET raw_model = model WHERE raw_model = '' OR raw_model IS NULL;
 				DROP INDEX IF EXISTS idx_usage_dedup;
 				CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_dedup ON usage_records(session_id, raw_model, timestamp, input_tokens, output_tokens);
+			`,
+		},
+		{
+			"006_usage_raw_model_index", `
+				CREATE INDEX IF NOT EXISTS idx_usage_raw_model ON usage_records(raw_model);
 			`,
 		},
 	}

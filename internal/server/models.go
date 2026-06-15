@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/briqt/agent-usage/internal/pricing"
 	"github.com/briqt/agent-usage/internal/storage"
 )
 
@@ -142,7 +143,7 @@ func (s *Server) handleModelAliasPut(w http.ResponseWriter, r *http.Request, ali
 		badRequest(w, err)
 		return
 	}
-	if err := s.applyAliasesAndRecalc(); err != nil {
+	if err := s.applyAliasesAndRecalcForRawModels([]string{alias}); err != nil {
 		serverError(w, err)
 		return
 	}
@@ -154,16 +155,20 @@ func (s *Server) handleModelAliasDelete(w http.ResponseWriter, alias string) {
 		serverError(w, err)
 		return
 	}
-	if err := s.applyAliasesAndRecalc(); err != nil {
+	if err := s.applyAliasesAndRecalcForRawModels([]string{alias}); err != nil {
 		serverError(w, err)
 		return
 	}
 	writeJSON(w, map[string]string{"status": "ok"})
 }
 
-func (s *Server) applyAliasesAndRecalc() error {
-	if err := s.db.ApplyModelAliases(); err != nil {
+func (s *Server) applyAliasesAndRecalcForRawModels(rawModels []string) error {
+	if err := s.db.ApplyModelAliasesForRawModels(rawModels); err != nil {
 		return err
 	}
-	return s.recalcAllCosts()
+	prices, err := s.db.GetAllPricing()
+	if err != nil {
+		return err
+	}
+	return s.db.RecalcAllCostsForRawModels(prices, pricing.CalcCost, rawModels)
 }

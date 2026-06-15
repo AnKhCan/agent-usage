@@ -37,20 +37,6 @@ type ModelAliasCandidate struct {
 	Variants       []ModelAliasVariant `json:"variants"`
 }
 
-func builtInModelAlias(raw string) (string, bool) {
-	model := strings.TrimSpace(raw)
-	switch {
-	case strings.EqualFold(model, "glm-5.1"):
-		return "glm-5.1", true
-	case strings.EqualFold(model, "zai-org/GLM-5.1"):
-		return "glm-5.1", true
-	case strings.EqualFold(model, "GLM-5.1"):
-		return "glm-5.1", true
-	default:
-		return "", false
-	}
-}
-
 func loadModelAliasMap(db *sql.DB) (map[string]string, error) {
 	rows, err := db.Query("SELECT alias, canonical_model FROM model_aliases WHERE alias != '' AND canonical_model != ''")
 	if err != nil {
@@ -81,9 +67,6 @@ func resolveModelWithAliases(raw string, aliases map[string]string) string {
 	}
 	if canonical, ok := aliases[trimmed]; ok && strings.TrimSpace(canonical) != "" {
 		return strings.TrimSpace(canonical)
-	}
-	if canonical, ok := builtInModelAlias(trimmed); ok {
-		return canonical
 	}
 	return trimmed
 }
@@ -157,45 +140,134 @@ func (d *DB) DeleteModelAlias(alias string) error {
 	return err
 }
 
-// ImportConfigAliases upserts config aliases without overwriting manual aliases.
-func (d *DB) ImportConfigAliases(aliases map[string]string) error {
-	if len(aliases) == 0 {
-		return nil
-	}
-	now := time.Now()
-	tx, err := d.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	stmt, err := tx.Prepare(`INSERT INTO model_aliases(alias, canonical_model, note, source, created_at, updated_at)
-		VALUES(?,?,?,?,?,?)
-		ON CONFLICT(alias) DO UPDATE SET
-			canonical_model=CASE WHEN model_aliases.source='manual' THEN model_aliases.canonical_model ELSE excluded.canonical_model END,
-			note=CASE WHEN model_aliases.source='manual' THEN model_aliases.note ELSE excluded.note END,
-			source=CASE WHEN model_aliases.source='manual' THEN model_aliases.source ELSE excluded.source END,
-			updated_at=CASE WHEN model_aliases.source='manual' THEN model_aliases.updated_at ELSE excluded.updated_at END`)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
+// ImportConfigAliases syncs config aliases without overwriting manual aliases.
+// It returns true when the stored config-managed aliases changed.
+func (d *DB) ImportConfigAliases(aliases map[string]string) (bool, error) {
+	desired := map[string]string{}
 	for alias, canonical := range aliases {
 		alias = strings.TrimSpace(alias)
 		canonical = strings.TrimSpace(canonical)
 		if alias == "" || canonical == "" {
 			continue
 		}
-		if _, err := stmt.Exec(alias, canonical, "config.yaml", "config", now, now); err != nil {
-			return err
-		}
+		desired[alias] = canonical
 	}
-	return tx.Commit()
+
+	now := time.Now()
+	tx, err := d.db.Begin()
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+
+	rows, err := tx.Query("SELECT alias FROM model_aliases WHERE source='config'")
+	if err != nil {
+		return false, err
+	}
+	var existingConfig []string
+	for rows.Next() {
+		var alias string
+		if err := rows.Scan(&alias); err != nil {
+			rows.Close()
+			return false, err
+		}
+		existingConfig = append(existingConfig, alias)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return false, err
+	}
+	rows.Close()
+
+	changed := false
+	for _, alias := range existingConfig {
+		if _, ok := desired[alias]; ok {
+			continue
+		}
+		if _, err := tx.Exec("DELETE FROM model_aliases WHERE alias=? AND source='config'", alias); err != nil {
+			return false, err
+		}
+		changed = true
+	}
+
+	for alias, canonical := range desired {
+		var currentCanonical, currentNote, currentSource string
+		err := tx.QueryRow("SELECT canonical_model, COALESCE(note,''), COALESCE(source,'') FROM model_aliases WHERE alias=?", alias).
+			Scan(&currentCanonical, &currentNote, &currentSource)
+		if err == sql.ErrNoRows {
+			if _, err := tx.Exec(`INSERT INTO model_aliases(alias, canonical_model, note, source, created_at, updated_at)
+				VALUES(?,?,?,?,?,?)`, alias, canonical, "config.yaml", "config", now, now); err != nil {
+				return false, err
+			}
+			changed = true
+			continue
+		}
+		if err != nil {
+			return false, err
+		}
+		if currentSource == "manual" {
+			continue
+		}
+		if currentCanonical == canonical && currentNote == "config.yaml" && currentSource == "config" {
+			continue
+		}
+		if _, err := tx.Exec(`UPDATE model_aliases
+			SET canonical_model=?, note=?, source=?, updated_at=?
+			WHERE alias=? AND source!='manual'`, canonical, "config.yaml", "config", now, alias); err != nil {
+			return false, err
+		}
+		changed = true
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return changed, nil
 }
 
 // ApplyModelAliases rewrites historical usage_records.model from raw_model using current aliases.
+// This full reconciliation is intended for startup/config changes; user edits should use
+// ApplyModelAliasesForRawModels to avoid scanning unrelated history.
 func (d *DB) ApplyModelAliases() error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	tx, err := d.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`UPDATE usage_records
+		SET raw_model=model
+		WHERE raw_model='' OR raw_model IS NULL`); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(`UPDATE usage_records
+		SET model=(SELECT canonical_model FROM model_aliases WHERE alias=usage_records.raw_model)
+		WHERE raw_model IN (SELECT alias FROM model_aliases WHERE alias!='' AND canonical_model!='')
+			AND model!=(SELECT canonical_model FROM model_aliases WHERE alias=usage_records.raw_model)`); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(`UPDATE usage_records
+		SET model=raw_model
+		WHERE raw_model!=''
+			AND model!=raw_model
+			AND raw_model NOT IN (SELECT alias FROM model_aliases WHERE alias!='' AND canonical_model!='')`); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+// ApplyModelAliasesForRawModels rewrites only records whose raw model is in rawModels.
+func (d *DB) ApplyModelAliasesForRawModels(rawModels []string) error {
+	rawModels = normalizeRawModels(rawModels)
+	if len(rawModels) == 0 {
+		return nil
+	}
+
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -203,62 +275,53 @@ func (d *DB) ApplyModelAliases() error {
 	if err != nil {
 		return err
 	}
-	rows, err := d.db.Query(`SELECT id, model, COALESCE(NULLIF(raw_model,''), model) FROM usage_records`)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-
-	type rec struct {
-		id        int64
-		model     string
-		rawModel  string
-		canonical string
-	}
-	var recs []rec
-	for rows.Next() {
-		var r rec
-		if err := rows.Scan(&r.id, &r.model, &r.rawModel); err != nil {
-			return err
-		}
-		r.canonical = resolveModelWithAliases(r.rawModel, aliases)
-		if r.model != r.canonical || r.rawModel == "" {
-			recs = append(recs, r)
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	rows.Close()
-	if len(recs) == 0 {
-		return nil
-	}
-
 	tx, err := d.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	stmt, err := tx.Prepare(`UPDATE usage_records SET model=?, raw_model=CASE WHEN raw_model='' OR raw_model IS NULL THEN ? ELSE raw_model END WHERE id=?`)
+
+	stmt, err := tx.Prepare(`UPDATE usage_records
+		SET model=?,
+			raw_model=CASE WHEN raw_model='' OR raw_model IS NULL THEN ? ELSE raw_model END
+		WHERE raw_model=? OR ((raw_model='' OR raw_model IS NULL) AND model=?)`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
-	for _, r := range recs {
-		if _, err := stmt.Exec(r.canonical, r.model, r.id); err != nil {
+	for _, rawModel := range rawModels {
+		canonical := resolveModelWithAliases(rawModel, aliases)
+		if canonical == "" {
+			canonical = rawModel
+		}
+		if _, err := stmt.Exec(canonical, rawModel, rawModel, rawModel); err != nil {
 			return err
 		}
 	}
 	return tx.Commit()
 }
 
+func normalizeRawModels(rawModels []string) []string {
+	seen := make(map[string]struct{}, len(rawModels))
+	result := make([]string, 0, len(rawModels))
+	for _, raw := range rawModels {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		if _, ok := seen[raw]; ok {
+			continue
+		}
+		seen[raw] = struct{}{}
+		result = append(result, raw)
+	}
+	return result
+}
+
 func aliasCandidateKey(raw string) string {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
 		return ""
-	}
-	if canonical, ok := builtInModelAlias(trimmed); ok {
-		return canonical
 	}
 	lower := strings.ToLower(trimmed)
 	parts := strings.Split(lower, "/")
