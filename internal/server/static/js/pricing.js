@@ -10,6 +10,7 @@ let modelState = {
   aliases: [],
   candidates: [],
   editingAlias: '',
+  candidateOpen: {},
   activeTab: 'pricing'
 };
 
@@ -303,41 +304,146 @@ function renderAliases() {
   </tr>`).join('')}</tbody></table>`;
 }
 
+function aliasCandidatePendingVariants(item) {
+  const canonical = String((item && item.canonical_model) || '').trim();
+  if (!canonical) return [];
+  return (item.variants || []).filter(variant => String(variant.model || '').trim() !== canonical);
+}
+
+function aliasCandidateUsedVariants(item) {
+  const canonical = String((item && item.canonical_model) || '').trim();
+  if (!canonical) return [];
+  return (item.variants || []).filter(variant => {
+    const raw = String(variant.raw_model || '').trim();
+    const model = String(variant.model || '').trim();
+    return raw && raw !== canonical && model === canonical;
+  });
+}
+
+function aliasCandidateGroupKey(item, idx) {
+  const canonical = String((item && item.canonical_model) || '').trim();
+  const raws = ((item && item.variants) || [])
+    .map(variant => String(variant.raw_model || '').trim())
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b))
+    .join('|');
+  return `${canonical || 'candidate'}::${raws || idx}`;
+}
+
+function aliasCandidateExpanded(item, idx, pending) {
+  const key = aliasCandidateGroupKey(item, idx);
+  if (Object.prototype.hasOwnProperty.call(modelState.candidateOpen, key)) {
+    return !!modelState.candidateOpen[key];
+  }
+  return pending.length > 0;
+}
+
+function toggleAliasCandidate(btn) {
+  const key = btn.dataset.candidateKey;
+  if (!key) return;
+  modelState.candidateOpen[key] = btn.getAttribute('aria-expanded') !== 'true';
+  renderAliasCandidates();
+}
+
+function aliasCandidatePreviewNames(pending, rows) {
+  const seen = new Set();
+  const source = pending.length > 0 ? pending : rows;
+  return source.map(variant => String(variant.raw_model || '').trim()).filter(raw => {
+    if (!raw || seen.has(raw)) return false;
+    seen.add(raw);
+    return true;
+  });
+}
+
+function renderAliasCandidateMap(rawNames, canonicalModel) {
+  const visible = rawNames.slice(0, 2);
+  const extra = Math.max(0, rawNames.length - visible.length);
+  const hasMore = extra > 0 ? ' data-has-more' : '';
+  const sources = visible.length > 0
+    ? visible.map(raw => `<span class="alias-candidate-chip" title="${esc(raw)}">${esc(raw)}</span>`).join('')
+    : `<span class="alias-candidate-chip">-</span>`;
+  return `<span class="alias-candidate-map">
+    <span class="alias-candidate-source-list"${hasMore}>${sources}${extra ? `<span class="alias-candidate-chip alias-candidate-more">${esc(tf('moreAliases', { count: fmt(extra) }))}</span>` : ''}</span>
+    <span class="alias-candidate-arrow">${esc(t('mapsTo'))}</span>
+    <span class="alias-candidate-chip alias-candidate-chip-target" title="${esc(canonicalModel || '-')}">${esc(canonicalModel || '-')}</span>
+  </span>`;
+}
+
 function renderAliasCandidates() {
   const box = $('alias-candidate-list');
   const count = $('alias-candidate-count');
   if (!box) return;
-  const items = modelState.candidates || [];
-  if (count) count.textContent = items.length;
+  const items = (modelState.candidates || []).map((item, idx) => {
+    const pending = aliasCandidatePendingVariants(item);
+    const used = aliasCandidateUsedVariants(item);
+    return { item, idx, pending, used, rows: pending.concat(used) };
+  }).filter(entry => entry.rows.length > 0);
+  const pendingTotal = items.reduce((sum, entry) => sum + entry.pending.length, 0);
+  if (count) {
+    const pendingLabel = tf('pendingAliasCount', { count: fmt(pendingTotal) });
+    count.textContent = fmt(pendingTotal);
+    count.title = pendingLabel;
+    count.setAttribute('aria-label', pendingLabel);
+  }
   if (items.length === 0) {
     box.innerHTML = `<div class="pricing-empty">${esc(t('noAliasCandidates'))}</div>`;
     return;
   }
-  box.innerHTML = `<div class="alias-candidate-stack">${items.map((item, idx) => {
-    const variants = item.variants || [];
-    return `<div class="alias-candidate-card">
+  box.innerHTML = `<div class="alias-candidate-stack">${items.map(({ item, idx, pending, rows }) => {
+    const hasPending = pending.length > 0;
+    const key = aliasCandidateGroupKey(item, idx);
+    const expanded = aliasCandidateExpanded(item, idx, pending);
+    const panelID = `alias-candidate-panel-${idx}`;
+    const previewNames = aliasCandidatePreviewNames(pending, rows);
+    const previewMap = renderAliasCandidateMap(previewNames, item.canonical_model);
+    return `<div class="alias-candidate-card ${expanded ? 'open' : 'collapsed'}">
     <div class="alias-candidate-head">
-      <div>
-        <div class="pricing-model-name alias-model-name" title="${esc(item.canonical_model)}">${esc(item.canonical_model)}</div>
-        <div class="pricing-model-meta">${fmt(item.usage_count || 0)} ${esc(t('calls'))} | ${fmt(item.total_tokens || 0)} ${esc(t('tokens'))}</div>
+      <button type="button" class="alias-candidate-toggle" data-alias-action="toggle-candidate" data-candidate-key="${esc(key)}" aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="${esc(panelID)}" aria-label="${esc(tf('toggleCandidate', { model: item.canonical_model || '-' }))}">
+        <span class="alias-candidate-chevron" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>
+        </span>
+        <span class="alias-candidate-title">
+          ${previewMap}
+          <span class="pricing-model-meta">${fmt(item.usage_count || 0)} ${esc(t('calls'))} | ${fmt(item.total_tokens || 0)} ${esc(t('tokens'))}</span>
+        </span>
+      </button>
+      <div class="alias-candidate-head-actions">
+        ${hasPending ? `<span class="alias-candidate-pending">${esc(tf('pendingAliases', { count: fmt(pending.length) }))}</span>` : ''}
+        ${hasPending ? `<button type="button" class="pricing-mini-btn" data-alias-action="apply-candidate" data-candidate-index="${idx}">${esc(tf('applyGroup', { count: fmt(pending.length) }))}</button>` : ''}
       </div>
-      <button type="button" class="pricing-mini-btn" data-alias-action="apply-candidate" data-candidate-index="${idx}">${esc(tf('applyGroup', { count: fmt(variants.length) }))}</button>
     </div>
-    <div class="alias-candidate-rows">${variants.map(variant => `<div class="alias-candidate-row">
-      <div class="alias-candidate-main">
-        <div class="alias-candidate-label">${esc(t('rawAlias'))}</div>
+    <div class="alias-candidate-rows" id="${esc(panelID)}" ${expanded ? '' : 'hidden'}><div class="alias-candidate-rows-inner">${rows.map(variant => {
+      const usedRow = String(variant.model || '').trim() === String(item.canonical_model || '').trim();
+      return `<div class="alias-candidate-row">
+      <div class="alias-candidate-col" data-label="${esc(t('rawAlias'))}">
         <div class="pricing-model-name alias-model-name" title="${esc(variant.raw_model)}">${esc(variant.raw_model)}</div>
       </div>
-      <div class="alias-candidate-meta">
-        <span>${esc(pricingSourcesLabel(variant.sources))}</span>
-        <span>${fmt(variant.usage_count || 0)} ${esc(t('calls'))}</span>
+      <div class="alias-candidate-col alias-candidate-col-suggest" data-label="${esc(t('canonicalTarget'))}">
+        <div class="alias-candidate-suggest-wrap">
+          <span class="alias-candidate-arrow">${esc(t('canonicalTarget'))}</span>
+          <span class="alias-candidate-chip" title="${esc(item.canonical_model)}">${esc(item.canonical_model)}</span>
+        </div>
       </div>
-      <div class="alias-candidate-current">
-        <div class="alias-candidate-label">${esc(t('currentModel'))}</div>
-        <div class="pricing-model-name alias-model-name" title="${esc(variant.model)}">${esc(variant.model)}</div>
+      <div class="alias-candidate-col" data-label="${esc(t('source'))}">
+        <span class="alias-candidate-col-text">${esc(pricingSourcesLabel(variant.sources))}</span>
       </div>
-      <button type="button" class="pricing-mini-btn" data-alias-action="use-candidate" data-raw-model="${esc(variant.raw_model)}" data-canonical-model="${esc(item.canonical_model)}">${esc(t('use'))}</button>
-    </div>`).join('')}</div>
+      <div class="alias-candidate-col" data-label="${esc(t('tokens'))}">
+        <span class="alias-candidate-col-text">${fmt(variant.total_tokens || 0)} ${esc(t('tokens'))} | ${fmt(variant.usage_count || 0)} ${esc(t('calls'))}</span>
+      </div>
+      <div class="alias-candidate-col alias-candidate-col-suggest" data-label="${esc(t('currentModel'))}">
+        <div class="alias-candidate-suggest-wrap">
+          <span class="alias-candidate-arrow">${esc(t('currentModel'))}</span>
+          <span class="alias-candidate-chip" title="${esc(variant.model)}">${esc(variant.model)}</span>
+        </div>
+      </div>
+      <div class="alias-candidate-col alias-candidate-col-center" data-label="${esc(t('status'))}">
+        <span class="alias-candidate-status ${usedRow ? 'used' : 'pending'}">${usedRow ? '✓' : '×'}</span>
+      </div>
+      <div class="alias-candidate-col" data-label="">
+        <button type="button" class="pricing-mini-btn" data-alias-action="${usedRow ? 'edit-candidate-alias' : 'use-candidate'}" data-raw-model="${esc(variant.raw_model)}" data-canonical-model="${esc(item.canonical_model)}">${esc(usedRow ? t('edit') : t('use'))}</button>
+      </div>
+    </div>`;
+    }).join('')}</div></div>
   </div>`;
   }).join('')}</div>`;
 }
@@ -381,8 +487,6 @@ function openAliasEditor(alias = '', data = {}, opts = {}) {
   input.disabled = editingExisting;
   $('alias-canonical-input').value = data.canonical_model || '';
   $('alias-note-input').value = data.note || '';
-  $('alias-editor-kicker').textContent = editingExisting ? t('editAlias') : t('manualAlias');
-  $('alias-editor-title').textContent = editingExisting ? alias : t('newAlias');
   $('alias-message').textContent = '';
   $('alias-message').className = 'pricing-message';
   $('alias-editor').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -397,10 +501,20 @@ function clearAliasEditor() {
   input.disabled = false;
   $('alias-canonical-input').value = '';
   $('alias-note-input').value = '';
-  $('alias-editor-kicker').textContent = t('manualAlias');
-  $('alias-editor-title').textContent = t('newAlias');
   $('alias-message').textContent = '';
   $('alias-message').className = 'pricing-message';
+}
+
+function editCandidateAlias(rawModel, canonicalModel) {
+  const item = (modelState.aliases || []).find(a => a.alias === rawModel);
+  if (item) {
+    openAliasEditor(item.alias, item);
+    return;
+  }
+  openAliasEditor(rawModel || '', {
+    canonical_model: canonicalModel || '',
+    note: 'candidate'
+  }, { mode: 'new' });
 }
 
 async function saveModelAlias(e) {
@@ -450,7 +564,7 @@ async function deleteModelAlias(alias) {
 async function applyAliasCandidate(index) {
   const item = (modelState.candidates || [])[index];
   if (!item) return;
-  const variants = item.variants || [];
+  const variants = aliasCandidatePendingVariants(item);
   if (variants.length === 0) return;
   if (!confirm(tf('applyGroupConfirm', { count: fmt(variants.length), model: item.canonical_model || '-' }))) return;
   const btns = document.querySelectorAll(`[data-alias-action="apply-candidate"][data-candidate-index="${index}"]`);
@@ -460,6 +574,7 @@ async function applyAliasCandidate(index) {
       method: 'PUT',
       body: { canonical_model: item.canonical_model, note: 'candidate' }
     })));
+    modelState.candidateOpen[aliasCandidateGroupKey(item, index)] = false;
     await loadAliasPage();
     await updateModelManagementBadge();
   } catch (err) {
@@ -575,6 +690,12 @@ function initPricingPage() {
         canonical_model: btn.dataset.canonicalModel || '',
         note: 'candidate'
       }, { mode: 'new' });
+    }
+    if (btn.dataset.aliasAction === 'edit-candidate-alias') {
+      editCandidateAlias(btn.dataset.rawModel || '', btn.dataset.canonicalModel || '');
+    }
+    if (btn.dataset.aliasAction === 'toggle-candidate') {
+      toggleAliasCandidate(btn);
     }
     if (btn.dataset.aliasAction === 'apply-candidate') {
       applyAliasCandidate(Number(btn.dataset.candidateIndex));

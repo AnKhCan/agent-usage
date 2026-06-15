@@ -469,6 +469,47 @@ func TestModelAliasCandidatesFindProviderVariants(t *testing.T) {
 	}
 }
 
+func TestModelAliasCandidatesKeepResolvedGroups(t *testing.T) {
+	db := tempDB(t)
+	ts := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	records := []*UsageRecord{
+		{Source: "codex", SessionID: "s1", Model: "glm-5.1", InputTokens: 100, OutputTokens: 50, Timestamp: ts},
+		{Source: "codex", SessionID: "s2", Model: "GLM-5.1", InputTokens: 200, OutputTokens: 50, Timestamp: ts.Add(time.Second)},
+		{Source: "codex", SessionID: "s3", Model: "zai-org/GLM-5.1", InputTokens: 300, OutputTokens: 50, Timestamp: ts.Add(2 * time.Second)},
+	}
+	if err := db.InsertUsageBatch(records); err != nil {
+		t.Fatalf("InsertUsageBatch: %v", err)
+	}
+	candidates, err := db.GetModelAliasCandidates()
+	if err != nil {
+		t.Fatalf("GetModelAliasCandidates before aliases: %v", err)
+	}
+	if len(candidates) != 1 {
+		t.Fatalf("expected one candidate before aliases, got %+v", candidates)
+	}
+
+	for _, alias := range []string{"GLM-5.1", "zai-org/GLM-5.1"} {
+		if err := db.UpsertModelAlias(ModelAlias{Alias: alias, CanonicalModel: "glm-5.1"}); err != nil {
+			t.Fatalf("UpsertModelAlias %s: %v", alias, err)
+		}
+	}
+	if err := db.ApplyModelAliasesForRawModels([]string{"GLM-5.1", "zai-org/GLM-5.1"}); err != nil {
+		t.Fatalf("ApplyModelAliasesForRawModels: %v", err)
+	}
+	candidates, err = db.GetModelAliasCandidates()
+	if err != nil {
+		t.Fatalf("GetModelAliasCandidates after aliases: %v", err)
+	}
+	if len(candidates) != 1 || candidates[0].CanonicalModel != "glm-5.1" {
+		t.Fatalf("expected resolved candidate to remain visible, got %+v", candidates)
+	}
+	for _, variant := range candidates[0].Variants {
+		if variant.Model != "glm-5.1" {
+			t.Fatalf("expected all variants to resolve to glm-5.1, got %+v", candidates[0].Variants)
+		}
+	}
+}
+
 func TestRecalcCosts(t *testing.T) {
 	db := tempDB(t)
 	ts := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)

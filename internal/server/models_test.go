@@ -36,7 +36,7 @@ func TestModelsStatusCountsBadgeInputs(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if resp.MissingPriceCount != 1 || resp.AliasCount != 1 || resp.CandidateCount != 1 || resp.BadgeCount != 2 {
+	if resp.MissingPriceCount != 1 || resp.AliasCount != 1 || resp.CandidateCount != 0 || resp.BadgeCount != 1 {
 		t.Fatalf("unexpected status: %+v", resp)
 	}
 }

@@ -23,6 +23,23 @@ type modelAliasRequest struct {
 	Note           string `json:"note"`
 }
 
+func countPendingAliasCandidates(candidates []storage.ModelAliasCandidate) int {
+	count := 0
+	for _, candidate := range candidates {
+		canonical := strings.TrimSpace(candidate.CanonicalModel)
+		if canonical == "" {
+			continue
+		}
+		for _, variant := range candidate.Variants {
+			if strings.TrimSpace(variant.Model) != canonical {
+				count++
+				break
+			}
+		}
+	}
+	return count
+}
+
 func (s *Server) handleModelsStatus(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		methodNotAllowed(w, http.MethodGet)
@@ -48,11 +65,12 @@ func (s *Server) handleModelsStatus(w http.ResponseWriter, r *http.Request) {
 		serverError(w, err)
 		return
 	}
+	pendingCandidateCount := countPendingAliasCandidates(candidates)
 	status := modelsStatusResponse{
 		MissingPriceCount: len(missing),
 		AliasCount:        aliasCount,
-		CandidateCount:    len(candidates),
-		BadgeCount:        len(missing) + len(candidates),
+		CandidateCount:    pendingCandidateCount,
+		BadgeCount:        len(missing) + pendingCandidateCount,
 	}
 	writeJSON(w, status)
 }
