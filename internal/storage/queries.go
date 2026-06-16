@@ -81,8 +81,16 @@ func (d *DB) SetFileState(path string, size, offset int64, ctx *FileScanContext)
 
 // Sessions
 
+func normalizeTimestamp(t time.Time) time.Time {
+	if t.IsZero() {
+		return t
+	}
+	return t.UTC()
+}
+
 // UpsertSession inserts or updates a session record, merging non-empty fields.
 func (d *DB) UpsertSession(s *SessionRecord) error {
+	startTime := normalizeTimestamp(s.StartTime)
 	_, err := d.db.Exec(`INSERT INTO sessions(source,session_id,project,cwd,version,git_branch,start_time,prompts)
 		VALUES(?,?,?,?,?,?,?,?)
 		ON CONFLICT(session_id) DO UPDATE SET
@@ -92,7 +100,7 @@ func (d *DB) UpsertSession(s *SessionRecord) error {
 			git_branch=CASE WHEN excluded.git_branch!='' THEN excluded.git_branch ELSE sessions.git_branch END,
 			start_time=CASE WHEN excluded.start_time < sessions.start_time THEN excluded.start_time ELSE sessions.start_time END,
 			prompts=prompts+excluded.prompts`,
-		s.Source, s.SessionID, s.Project, s.CWD, s.Version, s.GitBranch, s.StartTime, s.Prompts)
+		s.Source, s.SessionID, s.Project, s.CWD, s.Version, s.GitBranch, startTime, s.Prompts)
 	return err
 }
 
@@ -111,12 +119,13 @@ func (d *DB) InsertUsage(r *UsageRecord) error {
 	if model == "" {
 		model = strings.TrimSpace(r.Model)
 	}
+	timestamp := normalizeTimestamp(r.Timestamp)
 	_, err = d.db.Exec(`INSERT OR IGNORE INTO usage_records(source,session_id,model,raw_model,input_tokens,output_tokens,
 		cache_creation_input_tokens,cache_read_input_tokens,reasoning_output_tokens,cost_usd,timestamp,project,git_branch)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		r.Source, r.SessionID, model, rawModel, r.InputTokens, r.OutputTokens,
 		r.CacheCreationInputTokens, r.CacheReadInputTokens, r.ReasoningOutputTokens,
-		r.CostUSD, r.Timestamp, r.Project, r.GitBranch)
+		r.CostUSD, timestamp, r.Project, r.GitBranch)
 	return err
 }
 
@@ -148,9 +157,10 @@ func (d *DB) InsertUsageBatch(records []*UsageRecord) error {
 		if model == "" {
 			model = strings.TrimSpace(r.Model)
 		}
+		timestamp := normalizeTimestamp(r.Timestamp)
 		_, err := stmt.Exec(r.Source, r.SessionID, model, rawModel, r.InputTokens, r.OutputTokens,
 			r.CacheCreationInputTokens, r.CacheReadInputTokens, r.ReasoningOutputTokens,
-			r.CostUSD, r.Timestamp, r.Project, r.GitBranch)
+			r.CostUSD, timestamp, r.Project, r.GitBranch)
 		if err != nil {
 			return err
 		}
@@ -179,7 +189,8 @@ func (d *DB) InsertPromptBatch(events []*PromptEvent) error {
 	}
 	defer stmt.Close()
 	for _, e := range events {
-		if _, err := stmt.Exec(e.Source, e.SessionID, e.Timestamp); err != nil {
+		timestamp := normalizeTimestamp(e.Timestamp)
+		if _, err := stmt.Exec(e.Source, e.SessionID, timestamp); err != nil {
 			return err
 		}
 	}

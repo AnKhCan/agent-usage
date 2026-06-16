@@ -404,7 +404,7 @@ function renderAliasCandidates() {
         </span>
         <span class="alias-candidate-title">
           ${previewMap}
-          <span class="pricing-model-meta">${fmt(item.usage_count || 0)} ${esc(t('calls'))} | ${fmt(item.total_tokens || 0)} ${esc(t('tokens'))}</span>
+          <span class="pricing-model-meta">${fmt(item.total_tokens || 0)} ${esc(t('tokens'))} | ${fmt(item.usage_count || 0)} ${esc(t('calls'))}</span>
         </span>
       </button>
       <div class="alias-candidate-head-actions">

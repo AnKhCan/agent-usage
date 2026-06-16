@@ -816,6 +816,44 @@ func TestGetSessionsPage(t *testing.T) {
 	}
 }
 
+func TestGetSessionsPageSortsStartTimeAcrossTimezones(t *testing.T) {
+	db := tempDB(t)
+	cst := time.FixedZone("CST", 8*60*60)
+	olderOpenCode := time.Date(2026, 6, 16, 10, 0, 0, 0, cst) // 02:00 UTC
+	newerClaude := time.Date(2026, 6, 16, 2, 30, 0, 0, time.UTC)
+
+	sessions := []*SessionRecord{
+		{Source: "opencode", SessionID: "opencode-older", StartTime: olderOpenCode},
+		{Source: "claude", SessionID: "claude-newer", StartTime: newerClaude},
+	}
+	for _, s := range sessions {
+		if err := db.UpsertSession(s); err != nil {
+			t.Fatalf("UpsertSession: %v", err)
+		}
+	}
+
+	records := []*UsageRecord{
+		{Source: "opencode", SessionID: "opencode-older", Model: "model-a", InputTokens: 1, Timestamp: olderOpenCode},
+		{Source: "claude", SessionID: "claude-newer", Model: "model-a", InputTokens: 1, Timestamp: newerClaude},
+	}
+	if err := db.InsertUsageBatch(records); err != nil {
+		t.Fatalf("InsertUsageBatch: %v", err)
+	}
+
+	from := olderOpenCode.UTC().Add(-time.Minute)
+	to := newerClaude.Add(time.Minute)
+	page, err := db.GetSessionsPage(from, to, "", "", "", "start_time", "desc", 1, 20)
+	if err != nil {
+		t.Fatalf("GetSessionsPage: %v", err)
+	}
+	if len(page.Items) != 2 {
+		t.Fatalf("expected 2 sessions, got %d", len(page.Items))
+	}
+	if page.Items[0].SessionID != "claude-newer" || page.Items[1].SessionID != "opencode-older" {
+		t.Fatalf("expected true-time desc order [claude-newer opencode-older], got [%s %s]", page.Items[0].SessionID, page.Items[1].SessionID)
+	}
+}
+
 func TestGetDashboardStatsCacheHitRate(t *testing.T) {
 	db := tempDB(t)
 	ts := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)

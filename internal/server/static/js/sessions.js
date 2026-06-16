@@ -1,8 +1,20 @@
 // ── Time Formatting ──
+function parseSessionTime(ts) {
+  if (!ts) return null;
+  const raw = String(ts).trim();
+  const goTime = raw.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2}(?:\.\d+)?)\s+([+-]\d{2})(\d{2})(?:\s+\S+)?$/);
+  if (goTime) {
+    const d = new Date(`${goTime[1]}T${goTime[2]}${goTime[3]}:${goTime[4]}`);
+    return isNaN(d) ? null : d;
+  }
+  const d = new Date(raw.replace(' ', 'T'));
+  return isNaN(d) ? null : d;
+}
+
 function relTime(ts) {
   if (!ts) return '-';
-  const d = new Date(ts.replace(' ', 'T').replace(' +0000 UTC', 'Z'));
-  if (isNaN(d)) return ts.replace('T', ' ').slice(0, 16);
+  const d = parseSessionTime(ts);
+  if (!d) return String(ts).replace('T', ' ').slice(0, 16);
   const diff = Math.floor((Date.now() - d.getTime()) / 1000);
   if (diff < 60) return t('justNow');
   if (diff < 3600) return Math.floor(diff / 60) + t('mAgo');
@@ -13,8 +25,8 @@ function relTime(ts) {
 
 function fmtLocalTime(ts) {
   if (!ts) return '';
-  const d = new Date(ts.replace(' ', 'T').replace(' +0000 UTC', 'Z'));
-  if (isNaN(d)) return ts;
+  const d = parseSessionTime(ts);
+  if (!d) return ts;
   return d.toLocaleString();
 }
 
@@ -49,7 +61,7 @@ function renderSessionTable() {
         <td><span class="badge ${esc(s.source)}">${esc(s.source)}</span></td>
         <td title="${esc(s.cwd)}">${esc(s.project || s.cwd || '-')}</td>
         <td>${esc(s.git_branch || '-')}</td>
-        <td title="${esc(fmtLocalTime(s.start_time))}">${relTime(s.start_time)}</td>
+        <td title="${esc(fmtLocalTime(s.start_time))}">${esc(fmtLocalTime(s.start_time) || '-')}</td>
         <td>${s.prompts}</td><td>${fmt(s.tokens || 0)}</td><td style="font-weight:500;color:var(--green)">${fmtCost(s.total_cost || 0)}</td>
         <td>
           <button class="expand-btn ${isExpanded ? 'open' : ''}" data-sid="${esc(s.session_id)}">
