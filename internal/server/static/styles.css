@@ -846,7 +846,7 @@ input[type=number]:hover, input[type=number]:focus { border-color: var(--accent)
   min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center; gap: 8px;
 }
-.alias-candidate-map { grid-template-columns: minmax(0, 1fr) auto minmax(0, 0.9fr); }
+.alias-candidate-map { grid-template-columns: minmax(0, 1fr) auto minmax(0, auto); }
 .alias-candidate-source-list {
   position: relative; min-width: 0; display: inline-flex; align-items: center; gap: 6px; overflow: hidden;
 }
