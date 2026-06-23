@@ -318,7 +318,25 @@ func normalizeRawModels(rawModels []string) []string {
 	return result
 }
 
-func aliasCandidateKey(raw string) string {
+func isASCIIDigit(b byte) bool {
+	return b >= '0' && b <= '9'
+}
+
+func normalizeModelVersionSeparators(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if (c == '.' || c == '-') && i > 0 && i+1 < len(s) && isASCIIDigit(s[i-1]) && isASCIIDigit(s[i+1]) {
+			b.WriteByte('#')
+			continue
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
+}
+
+func aliasCandidateBase(raw string) string {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
 		return ""
@@ -331,7 +349,57 @@ func aliasCandidateKey(raw string) string {
 	return lower
 }
 
-func chooseCandidateCanonical(key string, variants []ModelAliasVariant) string {
+func aliasCandidateKey(raw string) string {
+	base := aliasCandidateBase(raw)
+	if base == "" {
+		return ""
+	}
+	return normalizeModelVersionSeparators(base)
+}
+
+func betterAliasTarget(current, candidate string) bool {
+	candidate = strings.TrimSpace(candidate)
+	if candidate == "" {
+		return false
+	}
+	current = strings.TrimSpace(current)
+	if current == "" {
+		return true
+	}
+	currentHasSlash := strings.Contains(current, "/")
+	candidateHasSlash := strings.Contains(candidate, "/")
+	if currentHasSlash != candidateHasSlash {
+		return !candidateHasSlash
+	}
+	if len(candidate) != len(current) {
+		return len(candidate) < len(current)
+	}
+	return strings.ToLower(candidate) < strings.ToLower(current)
+}
+
+func chooseObservedCanonical(key string, modelCounts map[string]int) string {
+	bestModel := ""
+	bestCount := -1
+	for model, count := range modelCounts {
+		if aliasCandidateKey(model) != key {
+			continue
+		}
+		model = strings.TrimSpace(model)
+		if strings.Contains(model, "/") {
+			continue
+		}
+		if count > bestCount || (count == bestCount && betterAliasTarget(bestModel, model)) {
+			bestModel = model
+			bestCount = count
+		}
+	}
+	if bestModel != "" {
+		return strings.ToLower(bestModel)
+	}
+	return ""
+}
+
+func chooseCandidateCanonical(key string, variants []ModelAliasVariant, pricingTargets map[string]string) string {
 	modelCounts := make(map[string]int)
 	for _, v := range variants {
 		model := strings.TrimSpace(v.Model)
@@ -339,25 +407,89 @@ func chooseCandidateCanonical(key string, variants []ModelAliasVariant) string {
 			modelCounts[model] += v.UsageCount
 		}
 	}
+	if observed := chooseObservedCanonical(key, modelCounts); observed != "" {
+		return observed
+	}
+	if pricingTarget := strings.TrimSpace(pricingTargets[key]); pricingTarget != "" {
+		return pricingTarget
+	}
 	bestModel := ""
 	bestCount := -1
 	for model, count := range modelCounts {
-		if strings.EqualFold(model, key) {
-			return strings.ToLower(model)
-		}
 		if count > bestCount || (count == bestCount && (bestModel == "" || len(model) < len(bestModel))) {
 			bestModel = model
 			bestCount = count
 		}
 	}
-	if key != "" {
-		return key
-	}
 	return bestModel
+}
+
+func pricingAliasTargetsForModel(model string) []string {
+	trimmed := strings.TrimSpace(model)
+	if trimmed == "" {
+		return nil
+	}
+	base := aliasCandidateBase(trimmed)
+	if base == "" {
+		return nil
+	}
+	return []string{base}
+}
+
+func (d *DB) loadPricingAliasTargets() (map[string]string, error) {
+	rows, err := d.db.Query(`SELECT model FROM pricing WHERE model!=''
+		UNION SELECT model FROM pricing_overrides WHERE model!=''`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	targets := make(map[string]string)
+	for rows.Next() {
+		var model string
+		if err := rows.Scan(&model); err != nil {
+			return nil, err
+		}
+		for _, target := range pricingAliasTargetsForModel(model) {
+			key := aliasCandidateKey(target)
+			if key == "" {
+				continue
+			}
+			if betterAliasTarget(targets[key], target) {
+				targets[key] = target
+			}
+		}
+	}
+	return targets, rows.Err()
+}
+
+func hasPricingBackedAliasCandidate(key, canonical string, variants []ModelAliasVariant, pricingTargets map[string]string) bool {
+	if strings.TrimSpace(pricingTargets[key]) == "" {
+		return false
+	}
+	canonical = strings.TrimSpace(canonical)
+	if canonical == "" {
+		return false
+	}
+	for _, v := range variants {
+		raw := strings.TrimSpace(v.RawModel)
+		model := strings.TrimSpace(v.Model)
+		if raw == "" || strings.EqualFold(raw, canonical) || strings.EqualFold(model, canonical) {
+			continue
+		}
+		if aliasCandidateKey(raw) == key {
+			return true
+		}
+	}
+	return false
 }
 
 // GetModelAliasCandidates returns raw model spellings that likely refer to the same model.
 func (d *DB) GetModelAliasCandidates() ([]ModelAliasCandidate, error) {
+	pricingTargets, err := d.loadPricingAliasTargets()
+	if err != nil {
+		return nil, err
+	}
 	rows, err := d.db.Query(`SELECT COALESCE(NULLIF(raw_model,''), model) as raw, model,
 		GROUP_CONCAT(DISTINCT source), COUNT(*),
 		COALESCE(SUM(input_tokens+cache_read_input_tokens+cache_creation_input_tokens+output_tokens),0),
@@ -392,17 +524,18 @@ func (d *DB) GetModelAliasCandidates() ([]ModelAliasCandidate, error) {
 		for _, v := range variants {
 			rawNames[strings.TrimSpace(v.RawModel)] = struct{}{}
 		}
-		if len(rawNames) < 2 {
-			continue
-		}
 		sort.Slice(variants, func(i, j int) bool {
 			if variants[i].UsageCount == variants[j].UsageCount {
 				return strings.ToLower(variants[i].RawModel) < strings.ToLower(variants[j].RawModel)
 			}
 			return variants[i].UsageCount > variants[j].UsageCount
 		})
+		canonical := chooseCandidateCanonical(key, variants, pricingTargets)
+		if len(rawNames) < 2 && !hasPricingBackedAliasCandidate(key, canonical, variants, pricingTargets) {
+			continue
+		}
 		c := ModelAliasCandidate{
-			CanonicalModel: chooseCandidateCanonical(key, variants),
+			CanonicalModel: canonical,
 			Variants:       variants,
 		}
 		for _, v := range variants {

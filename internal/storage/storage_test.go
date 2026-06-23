@@ -469,6 +469,57 @@ func TestModelAliasCandidatesFindProviderVariants(t *testing.T) {
 	}
 }
 
+func TestModelAliasCandidatesUsePricingTargetForSingleRawVariant(t *testing.T) {
+	db := tempDB(t)
+	ts := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	if err := db.UpsertPricing("claude-opus-4-8", 0.015, 0.075, 0.0015, 0.01875); err != nil {
+		t.Fatalf("UpsertPricing: %v", err)
+	}
+	if err := db.InsertUsage(&UsageRecord{
+		Source: "codex", SessionID: "s1", Model: "anthropic/claude-opus-4.8",
+		InputTokens: 100, OutputTokens: 50, Timestamp: ts,
+	}); err != nil {
+		t.Fatalf("InsertUsage: %v", err)
+	}
+
+	candidates, err := db.GetModelAliasCandidates()
+	if err != nil {
+		t.Fatalf("GetModelAliasCandidates: %v", err)
+	}
+	if len(candidates) != 1 {
+		t.Fatalf("expected one pricing-backed candidate, got %+v", candidates)
+	}
+	if candidates[0].CanonicalModel != "claude-opus-4-8" {
+		t.Fatalf("expected claude-opus-4-8 target, got %+v", candidates[0])
+	}
+	if len(candidates[0].Variants) != 1 || candidates[0].Variants[0].RawModel != "anthropic/claude-opus-4.8" {
+		t.Fatalf("unexpected variants: %+v", candidates[0].Variants)
+	}
+}
+
+func TestModelAliasCandidatesGroupVersionSeparatorVariants(t *testing.T) {
+	db := tempDB(t)
+	ts := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	records := []*UsageRecord{
+		{Source: "codex", SessionID: "s1", Model: "anthropic/claude-opus-4.8", InputTokens: 100, OutputTokens: 50, Timestamp: ts},
+		{Source: "codex", SessionID: "s2", Model: "claude-opus-4-8", InputTokens: 200, OutputTokens: 50, Timestamp: ts.Add(time.Second)},
+	}
+	if err := db.InsertUsageBatch(records); err != nil {
+		t.Fatalf("InsertUsageBatch: %v", err)
+	}
+
+	candidates, err := db.GetModelAliasCandidates()
+	if err != nil {
+		t.Fatalf("GetModelAliasCandidates: %v", err)
+	}
+	if len(candidates) != 1 {
+		t.Fatalf("expected one candidate, got %+v", candidates)
+	}
+	if candidates[0].CanonicalModel != "claude-opus-4-8" || len(candidates[0].Variants) != 2 {
+		t.Fatalf("unexpected candidate: %+v", candidates[0])
+	}
+}
+
 func TestModelAliasCandidatesKeepResolvedGroups(t *testing.T) {
 	db := tempDB(t)
 	ts := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
