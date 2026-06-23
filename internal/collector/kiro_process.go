@@ -139,6 +139,8 @@ func (c *KiroCollector) processSession(jsonPath string) error {
 	jsonlPath := strings.TrimSuffix(jsonPath, ".json") + ".jsonl"
 	promptEvents, totalOutputTokens := c.parseJSONL(jsonlPath, sessionID)
 
+	var lastTime time.Time
+
 	// Create usage records from user_turn_metadatas.
 	// Each turn may contain multiple API requests (total_request_count).
 	// We generate one UsageRecord per request so that total_calls reflects actual API calls.
@@ -158,6 +160,9 @@ func (c *KiroCollector) processSession(jsonPath string) error {
 			ts, _ := time.Parse(time.RFC3339Nano, turn.EndTimestamp)
 			if ts.IsZero() {
 				ts = createdAt
+			}
+			if ts.After(lastTime) {
+				lastTime = ts
 			}
 
 			// Estimate input tokens from context usage percentage.
@@ -221,6 +226,7 @@ func (c *KiroCollector) processSession(jsonPath string) error {
 			CWD:       meta.CWD,
 			Version:   meta.SessionState.Version,
 			StartTime: createdAt,
+			UpdateTime: lastTime,
 			Prompts:   len(promptEvents),
 		}
 		if err := c.db.UpsertSession(sess); err != nil {

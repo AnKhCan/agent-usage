@@ -41,7 +41,7 @@ func (c *ClaudeCollector) processFile(path, project string) error {
 	var records []*storage.UsageRecord
 	var promptEvents []*storage.PromptEvent
 	var prompts int
-	var firstTime time.Time
+	var firstTime, lastTime time.Time
 
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024)
@@ -57,8 +57,11 @@ func (c *ClaudeCollector) processFile(path, project string) error {
 		}
 
 		ts, _ := time.Parse(time.RFC3339Nano, entry.Timestamp)
-		if firstTime.IsZero() && !ts.IsZero() {
-			firstTime = ts
+		if !ts.IsZero() {
+			if firstTime.IsZero() {
+				firstTime = ts
+			}
+			lastTime = ts
 		}
 		if entry.SessionID != "" {
 			sessionID = entry.SessionID
@@ -156,6 +159,7 @@ func (c *ClaudeCollector) processFile(path, project string) error {
 			Version:   version,
 			GitBranch: gitBranch,
 			StartTime: firstTime,
+			UpdateTime: lastTime,
 			Prompts:   prompts,
 		}
 		if err := c.db.UpsertSession(sess); err != nil {

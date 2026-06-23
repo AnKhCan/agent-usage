@@ -91,16 +91,18 @@ func normalizeTimestamp(t time.Time) time.Time {
 // UpsertSession inserts or updates a session record, merging non-empty fields.
 func (d *DB) UpsertSession(s *SessionRecord) error {
 	startTime := normalizeTimestamp(s.StartTime)
-	_, err := d.db.Exec(`INSERT INTO sessions(source,session_id,project,cwd,version,git_branch,start_time,prompts)
-		VALUES(?,?,?,?,?,?,?,?)
+	updateTime := normalizeTimestamp(s.UpdateTime)
+	_, err := d.db.Exec(`INSERT INTO sessions(source,session_id,project,cwd,version,git_branch,start_time,update_time,prompts)
+		VALUES(?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(session_id) DO UPDATE SET
 			project=CASE WHEN excluded.project!='' THEN excluded.project ELSE sessions.project END,
 			cwd=CASE WHEN excluded.cwd!='' THEN excluded.cwd ELSE sessions.cwd END,
 			version=CASE WHEN excluded.version!='' THEN excluded.version ELSE sessions.version END,
 			git_branch=CASE WHEN excluded.git_branch!='' THEN excluded.git_branch ELSE sessions.git_branch END,
 			start_time=CASE WHEN excluded.start_time < sessions.start_time THEN excluded.start_time ELSE sessions.start_time END,
+			update_time=CASE WHEN excluded.update_time > sessions.update_time THEN excluded.update_time ELSE sessions.update_time END,
 			prompts=prompts+excluded.prompts`,
-		s.Source, s.SessionID, s.Project, s.CWD, s.Version, s.GitBranch, startTime, s.Prompts)
+		s.Source, s.SessionID, s.Project, s.CWD, s.Version, s.GitBranch, startTime, updateTime, s.Prompts)
 	return err
 }
 

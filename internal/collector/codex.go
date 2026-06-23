@@ -119,7 +119,7 @@ func (c *CodexCollector) processFile(path string) error {
 	var records []*storage.UsageRecord
 	var promptEvents []*storage.PromptEvent
 	var prompts int
-	var firstTime time.Time
+	var firstTime, lastTime time.Time
 
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024)
@@ -135,8 +135,11 @@ func (c *CodexCollector) processFile(path string) error {
 		}
 
 		ts, _ := time.Parse(time.RFC3339Nano, entry.Timestamp)
-		if firstTime.IsZero() && !ts.IsZero() {
-			firstTime = ts
+		if !ts.IsZero() {
+			if firstTime.IsZero() {
+				firstTime = ts
+			}
+			lastTime = ts
 		}
 
 		switch entry.Type {
@@ -227,6 +230,7 @@ func (c *CodexCollector) processFile(path string) error {
 			CWD:       cwd,
 			Version:   version,
 			StartTime: firstTime,
+			UpdateTime: lastTime,
 			Prompts:   prompts,
 		}
 		if err := c.db.UpsertSession(sess); err != nil {

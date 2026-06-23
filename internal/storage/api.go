@@ -78,8 +78,9 @@ type SessionInfo struct {
 	Project   string  `json:"project"`
 	CWD       string  `json:"cwd"`
 	GitBranch string  `json:"git_branch"`
-	StartTime string  `json:"start_time"`
-	Prompts   int     `json:"prompts"`
+	StartTime  string  `json:"start_time"`
+	UpdateTime string  `json:"update_time"`
+	Prompts    int     `json:"prompts"`
 	TotalCost float64 `json:"total_cost"`
 	Tokens    int64   `json:"tokens"`
 }
@@ -358,7 +359,7 @@ func (d *DB) GetSessions(from, to time.Time, source, model string) ([]SessionInf
 	args := append([]interface{}{}, baseArgs...)
 	args = append(args, promptArgs...)
 	rows, err := d.db.Query(`SELECT s.session_id, s.source, s.project, s.cwd, s.git_branch,
-		COALESCE(s.start_time,''), COALESCE(p.prompts,0),
+		COALESCE(s.start_time,''), COALESCE(s.update_time,''), COALESCE(p.prompts,0),
 		COALESCE(u.cost,0), COALESCE(u.tokens,0)
 		FROM sessions s
 		LEFT JOIN (SELECT session_id, SUM(cost_usd) as cost, SUM(input_tokens+cache_read_input_tokens+cache_creation_input_tokens+output_tokens) as tokens
@@ -376,7 +377,7 @@ func (d *DB) GetSessions(from, to time.Time, source, model string) ([]SessionInf
 	var result []SessionInfo
 	for rows.Next() {
 		var s SessionInfo
-		if err := rows.Scan(&s.SessionID, &s.Source, &s.Project, &s.CWD, &s.GitBranch, &s.StartTime, &s.Prompts, &s.TotalCost, &s.Tokens); err != nil {
+		if err := rows.Scan(&s.SessionID, &s.Source, &s.Project, &s.CWD, &s.GitBranch, &s.StartTime, &s.UpdateTime, &s.Prompts, &s.TotalCost, &s.Tokens); err != nil {
 			return nil, err
 		}
 		result = append(result, s)
@@ -414,6 +415,8 @@ func sessionSortExpr(sort string) string {
 		return "tokens"
 	case "total_cost":
 		return "total_cost"
+	case "update_time":
+		return "s.update_time"
 	default:
 		return "s.start_time"
 	}
@@ -473,7 +476,7 @@ func (d *DB) GetSessionsPage(from, to time.Time, source, model, project, sort, d
 	queryArgs := append([]interface{}{}, args...)
 	queryArgs = append(queryArgs, pageSize, offset)
 	rows, err := d.db.Query(`SELECT s.session_id, s.source, s.project, s.cwd, s.git_branch,
-		COALESCE(s.start_time,''), COALESCE(p.prompts,0) as prompts,
+		COALESCE(s.start_time,''), COALESCE(s.update_time,''), COALESCE(p.prompts,0) as prompts,
 		COALESCE(u.cost,0) as total_cost, COALESCE(u.tokens,0) as tokens`+
 		baseQuery+` ORDER BY `+orderExpr+` `+direction+`, s.session_id ASC LIMIT ? OFFSET ?`, queryArgs...)
 	if err != nil {
@@ -490,7 +493,7 @@ func (d *DB) GetSessionsPage(from, to time.Time, source, model, project, sort, d
 	}
 	for rows.Next() {
 		var s SessionInfo
-		if err := rows.Scan(&s.SessionID, &s.Source, &s.Project, &s.CWD, &s.GitBranch, &s.StartTime, &s.Prompts, &s.TotalCost, &s.Tokens); err != nil {
+		if err := rows.Scan(&s.SessionID, &s.Source, &s.Project, &s.CWD, &s.GitBranch, &s.StartTime, &s.UpdateTime, &s.Prompts, &s.TotalCost, &s.Tokens); err != nil {
 			return nil, err
 		}
 		result.Items = append(result.Items, s)

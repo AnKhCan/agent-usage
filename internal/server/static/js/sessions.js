@@ -52,7 +52,7 @@ function renderSessionTable() {
 
   const tb = $('session-table');
   if (page.length === 0) {
-    tb.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:40px;">${t('noSessions')}</td></tr>`;
+    tb.innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:40px;">${t('noSessions')}</td></tr>`;
   } else {
     // Render only main rows to prevent flicker
     tb.innerHTML = page.map(s => {
@@ -62,6 +62,7 @@ function renderSessionTable() {
         <td title="${esc(s.cwd)}">${esc(s.project || s.cwd || '-')}</td>
         <td>${esc(s.git_branch || '-')}</td>
         <td title="${esc(fmtLocalTime(s.start_time))}">${esc(fmtLocalTime(s.start_time) || '-')}</td>
+        <td title="${esc(fmtLocalTime(s.update_time))}">${esc(fmtLocalTime(s.update_time) || '-')}</td>
         <td>${s.prompts}</td><td>${fmt(s.tokens || 0)}</td><td style="font-weight:500;color:var(--green)">${fmtCost(s.total_cost || 0)}</td>
         <td>
           <button class="expand-btn ${isExpanded ? 'open' : ''}" data-sid="${esc(s.session_id)}">
@@ -134,7 +135,7 @@ async function fetchAndInjectDetail(sid, isRestore = false) {
   if (!isRestore) {
     tr.insertAdjacentHTML('afterend', `
       <tr class="detail-row" id="detail-row-${sid}">
-        <td colspan="8">
+        <td colspan="9">
           <div class="detail-content" id="detail-content-${sid}">
              <div style="color:var(--muted);font-size:12px;">Loading details...</div>
           </div>

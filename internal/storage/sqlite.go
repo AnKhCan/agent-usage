@@ -46,6 +46,7 @@ type SessionRecord struct {
 	Version   string
 	GitBranch string
 	StartTime time.Time
+	UpdateTime time.Time
 	Prompts   int
 }
 
@@ -168,6 +169,7 @@ func migrate(db *sql.DB) error {
 	// Add scan_context column to file_state for existing DBs (idempotent).
 	db.Exec("ALTER TABLE file_state ADD COLUMN scan_context TEXT DEFAULT ''")
 	db.Exec("ALTER TABLE usage_records ADD COLUMN raw_model TEXT DEFAULT ''")
+	db.Exec("ALTER TABLE sessions ADD COLUMN update_time DATETIME")
 
 	// Versioned migrations: each runs once, tracked via meta table.
 	migrations := []struct {

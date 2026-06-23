@@ -177,6 +177,9 @@ func (c *OpenCodeCollector) processDB(dbPath string) error {
 				StartTime: ts,
 			}
 		}
+		if ts.After(sessions[sessionID].UpdateTime) {
+			sessions[sessionID].UpdateTime = ts
+		}
 	}
 
 	// Collect user prompt events with timestamps
