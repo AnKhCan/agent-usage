@@ -87,6 +87,7 @@ select.enhanced-native-select {
 .custom-select-wrap[data-select-id="sel-compare-mode"] { width: 116px; }
 .custom-select-wrap[data-select-id="filter-source"] { width: 150px; }
 .custom-select-wrap[data-select-id="filter-model"] { width: var(--model-select-width, 150px); min-width: 124px; max-width: 260px; }
+.custom-select-wrap[data-select-id="filter-project"] { width: var(--project-select-width, 220px); min-width: 160px; max-width: 360px; }
 .custom-select-wrap[data-select-id="sel-refresh-interval"] { width: 112px; }
 .custom-select-wrap[data-select-id="sel-theme"] { width: 118px; }
 .custom-select-wrap[data-select-id="sel-lang"] { width: 72px; }

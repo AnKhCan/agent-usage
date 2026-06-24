@@ -858,12 +858,63 @@ func TestGetSessionsPage(t *testing.T) {
 		t.Fatalf("expected page 2 to contain sess-1, got %+v", page.Items)
 	}
 
-	page, err = db.GetSessionsPage(from, to, "", "", "special", "start_time", "desc", 1, 20)
+	page, err = db.GetSessionsPage(from, to, "", "", "special-path", "start_time", "desc", 1, 20)
 	if err != nil {
 		t.Fatalf("GetSessionsPage project filter: %v", err)
 	}
 	if page.Total != 1 || len(page.Items) != 1 || page.Items[0].SessionID != "sess-2" {
 		t.Fatalf("expected project/CWD filter to match sess-2, got total=%d items=%+v", page.Total, page.Items)
+	}
+}
+
+func TestProjectOptionsCanonicalizeCWD(t *testing.T) {
+	db := tempDB(t)
+	base := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	sessions := []*SessionRecord{
+		{Source: "claude", SessionID: "claude-1", Project: "-Users-me-code-agent-usage", CWD: "/Users/me/code/agent-usage", StartTime: base},
+		{Source: "codex", SessionID: "codex-1", CWD: "/Users/me/code/agent-usage", StartTime: base.Add(time.Minute)},
+		{Source: "opencode", SessionID: "opencode-1", Project: "/Users/me/code/agent-usage", CWD: "/Users/me/code/agent-usage", StartTime: base.Add(2 * time.Minute)},
+		{Source: "kiro", SessionID: "kiro-1", Project: "agent-usage-docs", CWD: "/Users/me/code/agent-usage-docs", StartTime: base.Add(3 * time.Minute)},
+	}
+	for _, s := range sessions {
+		if err := db.UpsertSession(s); err != nil {
+			t.Fatalf("UpsertSession: %v", err)
+		}
+	}
+
+	records := []*UsageRecord{
+		{Source: "claude", SessionID: "claude-1", Model: "model-a", InputTokens: 1, CostUSD: 1, Timestamp: base},
+		{Source: "codex", SessionID: "codex-1", Model: "model-a", InputTokens: 1, CostUSD: 2, Timestamp: base.Add(time.Minute)},
+		{Source: "opencode", SessionID: "opencode-1", Model: "model-a", InputTokens: 1, CostUSD: 3, Timestamp: base.Add(2 * time.Minute)},
+		{Source: "kiro", SessionID: "kiro-1", Model: "model-a", InputTokens: 1, CostUSD: 4, Timestamp: base.Add(3 * time.Minute)},
+	}
+	if err := db.InsertUsageBatch(records); err != nil {
+		t.Fatalf("InsertUsageBatch: %v", err)
+	}
+
+	options, err := db.GetProjectOptions(base.Add(-time.Hour), base.Add(time.Hour), "", "")
+	if err != nil {
+		t.Fatalf("GetProjectOptions: %v", err)
+	}
+	if len(options) != 2 {
+		t.Fatalf("expected 2 canonical project options, got %+v", options)
+	}
+	if options[0].Key != "agent-usage" || options[0].Label != "agent-usage" || options[0].Sessions != 3 {
+		t.Fatalf("expected agent-usage option with 3 sessions, got %+v", options[0])
+	}
+
+	page, err := db.GetSessionsPage(base.Add(-time.Hour), base.Add(time.Hour), "", "", "agent-usage", "start_time", "asc", 1, 20)
+	if err != nil {
+		t.Fatalf("GetSessionsPage project key: %v", err)
+	}
+	if page.Total != 3 || len(page.Items) != 3 {
+		t.Fatalf("expected only agent-usage sessions, got total=%d items=%+v", page.Total, page.Items)
+	}
+	for _, item := range page.Items {
+		if item.SessionID == "kiro-1" {
+			t.Fatalf("similar project agent-usage-docs should not match agent-usage: %+v", page.Items)
+		}
 	}
 }
 

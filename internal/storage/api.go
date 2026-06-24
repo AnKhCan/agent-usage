@@ -2,6 +2,7 @@ package storage
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -73,16 +74,16 @@ type TrendBreakdownValue struct {
 
 // SessionInfo represents a session with aggregated cost and token totals.
 type SessionInfo struct {
-	SessionID string  `json:"session_id"`
-	Source    string  `json:"source"`
-	Project   string  `json:"project"`
-	CWD       string  `json:"cwd"`
-	GitBranch string  `json:"git_branch"`
+	SessionID  string  `json:"session_id"`
+	Source     string  `json:"source"`
+	Project    string  `json:"project"`
+	CWD        string  `json:"cwd"`
+	GitBranch  string  `json:"git_branch"`
 	StartTime  string  `json:"start_time"`
 	UpdateTime string  `json:"update_time"`
 	Prompts    int     `json:"prompts"`
-	TotalCost float64 `json:"total_cost"`
-	Tokens    int64   `json:"tokens"`
+	TotalCost  float64 `json:"total_cost"`
+	Tokens     int64   `json:"tokens"`
 }
 
 // SessionPage represents one page of aggregated sessions plus pagination metadata.
@@ -92,6 +93,49 @@ type SessionPage struct {
 	PageSize   int           `json:"page_size"`
 	Total      int           `json:"total"`
 	TotalPages int           `json:"total_pages"`
+}
+
+// ProjectOption represents a canonical project filter option derived from
+// session metadata. Key is stable for filtering; Label is for display.
+type ProjectOption struct {
+	Key      string   `json:"key"`
+	Label    string   `json:"label"`
+	Sessions int      `json:"sessions"`
+	Sources  []string `json:"sources"`
+	Cost     float64  `json:"cost"`
+}
+
+func projectBaseName(value string) string {
+	v := strings.TrimSpace(value)
+	if v == "" {
+		return ""
+	}
+	v = strings.TrimRight(v, `/\`)
+	v = strings.ReplaceAll(v, `\`, `/`)
+	if idx := strings.LastIndex(v, "/"); idx >= 0 {
+		v = v[idx+1:]
+	}
+	if v == "." || v == "/" {
+		return ""
+	}
+	return strings.TrimSpace(v)
+}
+
+func canonicalProject(project, cwd string) (key, label string) {
+	label = projectBaseName(cwd)
+	if label == "" {
+		label = projectBaseName(project)
+	}
+	if label == "" {
+		label = strings.TrimSpace(project)
+	}
+	if label == "" {
+		label = strings.TrimSpace(cwd)
+	}
+	if label == "" {
+		return "", ""
+	}
+	return strings.ToLower(label), label
 }
 
 // GetDashboardStats returns aggregate cost, token, session, and prompt counts
@@ -313,6 +357,76 @@ func (d *DB) GetTrendBreakdown(from, to time.Time, source, model, dimension stri
 	return result, nil
 }
 
+// GetProjectOptions returns canonical project choices for sessions that have
+// usage in the selected time range and global source/model filters.
+func (d *DB) GetProjectOptions(from, to time.Time, source, model string) ([]ProjectOption, error) {
+	sf, sa := sourceFilter(source)
+	mf, ma := modelFilter(model)
+	filter := sf + mf
+	args := append([]interface{}{from, to}, sa...)
+	args = append(args, ma...)
+
+	rows, err := d.db.Query(`SELECT s.source, s.project, s.cwd, COALESCE(u.cost,0)
+		FROM sessions s
+		LEFT JOIN (SELECT session_id, SUM(cost_usd) as cost
+			FROM usage_records WHERE timestamp BETWEEN ? AND ?`+filter+` GROUP BY session_id) u
+		ON s.session_id = u.session_id
+		WHERE u.session_id IS NOT NULL`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	type projectAgg struct {
+		option  ProjectOption
+		sources map[string]bool
+	}
+	byKey := map[string]*projectAgg{}
+	for rows.Next() {
+		var sourceName, project, cwd string
+		var cost float64
+		if err := rows.Scan(&sourceName, &project, &cwd, &cost); err != nil {
+			return nil, err
+		}
+		key, label := canonicalProject(project, cwd)
+		if key == "" {
+			continue
+		}
+		agg := byKey[key]
+		if agg == nil {
+			agg = &projectAgg{
+				option:  ProjectOption{Key: key, Label: label},
+				sources: map[string]bool{},
+			}
+			byKey[key] = agg
+		}
+		if len(label) < len(agg.option.Label) {
+			agg.option.Label = label
+		}
+		agg.option.Sessions++
+		agg.option.Cost += cost
+		if sourceName != "" {
+			agg.sources[sourceName] = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	result := make([]ProjectOption, 0, len(byKey))
+	for _, agg := range byKey {
+		for src := range agg.sources {
+			agg.option.Sources = append(agg.option.Sources, src)
+		}
+		sort.Strings(agg.option.Sources)
+		result = append(result, agg.option)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return strings.ToLower(result[i].Label) < strings.ToLower(result[j].Label)
+	})
+	return result, nil
+}
+
 // SessionDetail represents per-model breakdown for a single session.
 type SessionDetail struct {
 	Model        string  `json:"model"`
@@ -436,13 +550,7 @@ func (d *DB) GetSessionsPage(from, to time.Time, source, model, project, sort, d
 	args := append([]interface{}{}, baseArgs...)
 	args = append(args, promptArgs...)
 
-	projectClause := ""
-	project = strings.TrimSpace(strings.ToLower(project))
-	if project != "" {
-		projectClause = " AND (LOWER(s.project) LIKE ? OR LOWER(s.cwd) LIKE ?)"
-		like := "%" + project + "%"
-		args = append(args, like, like)
-	}
+	projectKey := strings.TrimSpace(strings.ToLower(project))
 
 	baseQuery := ` FROM sessions s
 		LEFT JOIN (SELECT session_id, SUM(cost_usd) as cost, SUM(input_tokens+cache_read_input_tokens+cache_creation_input_tokens+output_tokens) as tokens
@@ -451,7 +559,64 @@ func (d *DB) GetSessionsPage(from, to time.Time, source, model, project, sort, d
 		LEFT JOIN (SELECT session_id, COUNT(*) as prompts
 			FROM prompt_events WHERE timestamp BETWEEN ? AND ?` + sf + ` GROUP BY session_id) p
 		ON s.session_id = p.session_id
-		WHERE u.session_id IS NOT NULL` + projectClause
+		WHERE u.session_id IS NOT NULL`
+
+	direction := "DESC"
+	if strings.EqualFold(dir, "asc") {
+		direction = "ASC"
+	}
+	orderExpr := sessionSortExpr(sort)
+
+	if projectKey != "" {
+		rows, err := d.db.Query(`SELECT s.session_id, s.source, s.project, s.cwd, s.git_branch,
+			COALESCE(s.start_time,''), COALESCE(s.update_time,''), COALESCE(p.prompts,0) as prompts,
+			COALESCE(u.cost,0) as total_cost, COALESCE(u.tokens,0) as tokens`+
+			baseQuery+` ORDER BY `+orderExpr+` `+direction+`, s.session_id ASC`, args...)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+
+		var filtered []SessionInfo
+		for rows.Next() {
+			var s SessionInfo
+			if err := rows.Scan(&s.SessionID, &s.Source, &s.Project, &s.CWD, &s.GitBranch, &s.StartTime, &s.UpdateTime, &s.Prompts, &s.TotalCost, &s.Tokens); err != nil {
+				return nil, err
+			}
+			key, _ := canonicalProject(s.Project, s.CWD)
+			if key == projectKey {
+				filtered = append(filtered, s)
+			}
+		}
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+
+		total := len(filtered)
+		totalPages := 1
+		if total > 0 {
+			totalPages = (total + pageSize - 1) / pageSize
+		}
+		if page > totalPages {
+			page = totalPages
+		}
+		start := (page - 1) * pageSize
+		end := start + pageSize
+		if end > total {
+			end = total
+		}
+		items := []SessionInfo{}
+		if start < total {
+			items = filtered[start:end]
+		}
+		return &SessionPage{
+			Items:      items,
+			Page:       page,
+			PageSize:   pageSize,
+			Total:      total,
+			TotalPages: totalPages,
+		}, nil
+	}
 
 	var total int
 	if err := d.db.QueryRow(`SELECT COUNT(*)`+baseQuery, args...).Scan(&total); err != nil {
@@ -466,11 +631,6 @@ func (d *DB) GetSessionsPage(from, to time.Time, source, model, project, sort, d
 		page = totalPages
 	}
 
-	direction := "DESC"
-	if strings.EqualFold(dir, "asc") {
-		direction = "ASC"
-	}
-	orderExpr := sessionSortExpr(sort)
 	offset := (page - 1) * pageSize
 
 	queryArgs := append([]interface{}{}, args...)

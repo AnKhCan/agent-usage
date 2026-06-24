@@ -41,6 +41,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/cost-over-time", s.handleCostOverTime)
 	mux.HandleFunc("/api/tokens-over-time", s.handleTokensOverTime)
 	mux.HandleFunc("/api/trends/compare", s.handleTrendCompare)
+	mux.HandleFunc("/api/project-options", s.handleProjectOptions)
 	mux.HandleFunc("/api/sessions", s.handleSessions)
 	mux.HandleFunc("/api/sessions-page", s.handleSessionsPage)
 	mux.HandleFunc("/api/session-detail", s.handleSessionDetail)
@@ -189,6 +190,22 @@ func (s *Server) handleTokensOverTime(w http.ResponseWriter, r *http.Request) {
 	source := r.URL.Query().Get("source")
 	model := r.URL.Query().Get("model")
 	data, err := s.db.GetTokensOverTime(from, to, granularity, source, model, tzOffset)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	writeJSON(w, data)
+}
+
+func (s *Server) handleProjectOptions(w http.ResponseWriter, r *http.Request) {
+	from, to, _, err := s.parseTimeRange(r)
+	if err != nil {
+		badRequest(w, err)
+		return
+	}
+	source := r.URL.Query().Get("source")
+	model := r.URL.Query().Get("model")
+	data, err := s.db.GetProjectOptions(from, to, source, model)
 	if err != nil {
 		serverError(w, err)
 		return

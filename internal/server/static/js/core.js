@@ -116,7 +116,7 @@ const I18N = {
     input: 'Input', output: 'Output', cacheRead: 'Cache Read', cacheCreate: 'Cache Write',
     gran_1m: '1 min', gran_30m: '30 min', gran_1h: '1 hour', gran_6h: '6 hours', gran_12h: '12 hours', gran_1d: '1 day', gran_1w: '1 week', gran_1M: '1 month',
     model: 'Model', calls: 'Calls', allSources: 'All Sources', claudeCode: 'Claude Code', codex: 'Codex', openClaw: 'OpenClaw', openCode: 'OpenCode', mimoCode: 'MiMo Code', kiro: 'Kiro CLI', pi: 'Pi',
-    filterProject: 'Filter by project...', justNow: 'just now', mAgo: 'm ago', hAgo: 'h ago', dAgo: 'd ago',
+    allProjects: 'All Projects', justNow: 'just now', mAgo: 'm ago', hAgo: 'h ago', dAgo: 'd ago',
     noSessions: 'No sessions found in this period.', unitMin: 'min', unitSec: 'sec',
     apply: 'Apply', previousMonth: 'Previous month', nextMonth: 'Next month', dateRange: 'Date range', close: 'Close',
     pricingKicker: 'Pricing', pricingTitle: 'Model Prices', modelsKicker: 'Models', modelManagement: 'Model Management', pricesTab: 'Prices', aliasesTab: 'Aliases', syncPrices: 'Sync Prices', backToDashboard: 'Dashboard',
@@ -138,7 +138,7 @@ const I18N = {
     input: '输入', output: '输出', cacheRead: '缓存读取', cacheCreate: '缓存写入',
     gran_1m: '1 分钟', gran_30m: '30 分钟', gran_1h: '1 小时', gran_6h: '6 小时', gran_12h: '12 小时', gran_1d: '1 天', gran_1w: '1 周', gran_1M: '1 个月',
     model: '模型', calls: '调用次数', allSources: '全部来源', claudeCode: 'Claude Code', codex: 'Codex', openClaw: 'OpenClaw', openCode: 'OpenCode', mimoCode: 'MiMo Code', kiro: 'Kiro CLI', pi: 'Pi',
-    filterProject: '按项目筛选...', justNow: '刚刚', mAgo: '分钟前', hAgo: '小时前', dAgo: '天前',
+    allProjects: '全部项目', justNow: '刚刚', mAgo: '分钟前', hAgo: '小时前', dAgo: '天前',
     noSessions: '当前时间段内暂无会话数据。', unitMin: '分钟', unitSec: '秒',
     apply: '应用', previousMonth: '上个月', nextMonth: '下个月', dateRange: '日期范围', close: '关闭',
     pricingKicker: '价格', pricingTitle: '模型价格', modelsKicker: '', modelManagement: '模型管理', pricesTab: '价格', aliasesTab: '别名', syncPrices: '同步价格', backToDashboard: '仪表盘',
@@ -174,6 +174,7 @@ let state = {
   customTo: localStorage.getItem('au-customTo') || '',
   source: localStorage.getItem('au-source') || '',
   model: localStorage.getItem('au-model') || '',
+  project: localStorage.getItem('au-project') || '',
 };
 
 let autoTimer = null;
@@ -188,6 +189,7 @@ let expandedSessions = new Set(); // Stores opened sid
 let isFetching = false;
 let trendCompareHideTimer = null;
 let projectFilterTimer = null;
+let projectOptionsCache = [];
 let datePicker = {
   open: false,
   viewMonth: null,
@@ -203,7 +205,7 @@ function eventIncludesElement(e, el) {
   return el.contains(e.target);
 }
 
-const ENHANCED_SELECT_IDS = ['sel-granularity', 'sel-compare-mode', 'filter-source', 'filter-model', 'sel-refresh-interval', 'sel-theme', 'sel-lang', 'models-sel-theme', 'models-sel-lang'];
+const ENHANCED_SELECT_IDS = ['sel-granularity', 'sel-compare-mode', 'filter-source', 'filter-model', 'filter-project', 'sel-refresh-interval', 'sel-theme', 'sel-lang', 'models-sel-theme', 'models-sel-lang'];
 const customSelects = new Map();
 
 function t(key) { return (I18N[state.lang] || I18N.en)[key] || key; }

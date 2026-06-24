@@ -39,6 +39,40 @@ function updateModelSelectWidth() {
   wrap.style.setProperty('--model-select-width', `${width}px`);
 }
 
+function updateProjectSelectWidth() {
+  const select = $('filter-project');
+  if (!select) return;
+  const wrap = select.closest('.custom-select-wrap');
+  if (!wrap) return;
+  const maxTextWidth = Array.from(select.options).reduce((max, option) => {
+    return Math.max(max, measureSelectText(select, option.textContent || ''));
+  }, 0);
+  const width = Math.min(360, Math.max(160, Math.ceil(maxTextWidth + 48)));
+  wrap.style.setProperty('--project-select-width', `${width}px`);
+}
+
+function projectOptionText(option) {
+  const label = option && option.label ? option.label : '-';
+  const count = Number(option && option.sessions) || 0;
+  return count > 0 ? `${label} (${fmt(count)})` : label;
+}
+
+function renderProjectFilterOptions(options = projectOptionsCache) {
+  const sel = $('filter-project');
+  if (!sel) return false;
+  projectOptionsCache = Array.isArray(options) ? options : [];
+  const prev = state.project;
+  const valid = !prev || projectOptionsCache.some(option => option.key === prev);
+  if (!valid) persist('project', '');
+
+  sel.innerHTML = `<option value="" ${state.project === '' ? 'selected' : ''}>${t('allProjects')}</option>` + projectOptionsCache.map(option =>
+    `<option value="${esc(option.key)}" ${state.project === option.key ? 'selected' : ''}>${esc(projectOptionText(option))}</option>`
+  ).join('');
+  syncCustomSelect(sel);
+  updateProjectSelectWidth();
+  return prev !== state.project;
+}
+
 // ── Custom Selects ──
 function customSelectLabel(select) {
   const selected = select.options[select.selectedIndex];
@@ -237,10 +271,10 @@ function buildControls() {
 
   const SOURCES = [['', 'allSources'], ['claude', 'claudeCode'], ['codex', 'codex'], ['openclaw', 'openClaw'], ['opencode', 'openCode'], ['mimocode', 'mimoCode'], ['kiro', 'kiro'], ['pi', 'pi']];
   $('filter-source').innerHTML = SOURCES.map(([v, k]) => `<option value="${v}" ${state.source === v ? 'selected' : ''}>${t(k)}</option>`).join('');
+  renderProjectFilterOptions(projectOptionsCache);
 
   renderDatePicker();
   renderCompareModeControl({ animate: false });
-  $('filter-project').placeholder = t('filterProject');
   syncCustomSelects();
   updateModelSelectWidth();
 }
@@ -323,7 +357,7 @@ $('btn-refresh').onclick = () => { refresh(); applyAutoRefresh(); };
 $('btn-auto-refresh').onclick = () => { persist('autoRefresh', !state.autoRefresh); applyAutoRefresh(); };
 $('filter-source').onchange = e => { persist('source', e.target.value); persist('model', ''); sessionPage = 1; refresh(); };
 $('filter-model').onchange = e => { persist('model', e.target.value); sessionPage = 1; refresh(); };
-$('filter-project').oninput = () => { sessionPage = 1; scheduleSessionRefresh(); };
+$('filter-project').onchange = e => { persist('project', e.target.value); sessionPage = 1; refreshSessionsOnly(); };
 
 function updateModelFilter(costModel) {
   const models = costModel.map(d => d.model).filter(Boolean);

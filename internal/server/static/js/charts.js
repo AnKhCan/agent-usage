@@ -7,13 +7,12 @@ function initCharts() {
 }
 
 function sessionQueryParams() {
-  const projectInput = $('filter-project');
   return {
     page: sessionPage,
     page_size: PAGE_SIZE,
     sort: sessionSort.key,
     dir: sessionSort.dir,
-    project: projectInput ? projectInput.value.trim() : ''
+    project: state.project || ''
   };
 }
 
@@ -335,17 +334,21 @@ async function refresh() {
   $('global-loader').classList.add('loading');
 
   try {
-    const [stats, costModel, costTime, tokensTime, sessions, trendCompare] = await Promise.all([
+    let [stats, costModel, costTime, tokensTime, projectOptions, sessions, trendCompare] = await Promise.all([
       api('stats'),
       api('cost-by-model', {skipModel: true}),
       api('cost-over-time'),
       api('tokens-over-time'),
+      api('project-options'),
       api('sessions-page', { params: sessionQueryParams() }),
       isCompareEnabled() ? api('trends/compare') : Promise.resolve(null)
     ]);
 
     // Update model filter dropdown from cost-by-model results
     updateModelFilter(costModel || []);
+    if (renderProjectFilterOptions(projectOptions || [])) {
+      sessions = await api('sessions-page', { params: sessionQueryParams() });
+    }
 
     $('s-cost').textContent = fmtCost(stats.total_cost || 0);
     $('s-tokens').textContent = fmt(stats.total_tokens || 0);
