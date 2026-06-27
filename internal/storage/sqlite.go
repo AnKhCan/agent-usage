@@ -2,12 +2,34 @@ package storage
 
 import (
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"sync"
 	"time"
 
-	_ "modernc.org/sqlite"
+	"modernc.org/sqlite"
 )
+
+func init() {
+	sqlite.MustRegisterDeterministicScalarFunction("agent_usage_canonical_project_key", 2, func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+		key, _ := canonicalProject(sqliteStringArg(args, 0), sqliteStringArg(args, 1))
+		return key, nil
+	})
+}
+
+func sqliteStringArg(args []driver.Value, idx int) string {
+	if idx >= len(args) || args[idx] == nil {
+		return ""
+	}
+	switch v := args[idx].(type) {
+	case string:
+		return v
+	case []byte:
+		return string(v)
+	default:
+		return fmt.Sprint(v)
+	}
+}
 
 // DB wraps a SQLite database connection with a mutex for safe concurrent access.
 type DB struct {
@@ -38,16 +60,16 @@ type UsageRecord struct {
 
 // SessionRecord represents metadata for a coding agent session.
 type SessionRecord struct {
-	ID        int64
-	Source    string
-	SessionID string
-	Project   string
-	CWD       string
-	Version   string
-	GitBranch string
-	StartTime time.Time
+	ID         int64
+	Source     string
+	SessionID  string
+	Project    string
+	CWD        string
+	Version    string
+	GitBranch  string
+	StartTime  time.Time
 	UpdateTime time.Time
-	Prompts   int
+	Prompts    int
 }
 
 // PromptEvent represents a single user prompt with its timestamp.

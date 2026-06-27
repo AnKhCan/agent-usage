@@ -536,6 +536,7 @@ func sessionSortExpr(sort string) string {
 	}
 }
 
+
 // GetSessionsPage returns one page of sessions with server-side project filtering,
 // sorting, and pagination. It preserves GetSessions for compatibility with older API clients.
 func (d *DB) GetSessionsPage(from, to time.Time, source, model, project, sort, dir string, page, pageSize int) (*SessionPage, error) {
@@ -550,7 +551,12 @@ func (d *DB) GetSessionsPage(from, to time.Time, source, model, project, sort, d
 	args := append([]interface{}{}, baseArgs...)
 	args = append(args, promptArgs...)
 
-	projectKey := strings.TrimSpace(strings.ToLower(project))
+	projectClause := ""
+	projectKey, _ := canonicalProject(project, "")
+	if projectKey != "" {
+		projectClause = ` AND agent_usage_canonical_project_key(s.project, s.cwd) = ?`
+		args = append(args, projectKey)
+	}
 
 	baseQuery := ` FROM sessions s
 		LEFT JOIN (SELECT session_id, SUM(cost_usd) as cost, SUM(input_tokens+cache_read_input_tokens+cache_creation_input_tokens+output_tokens) as tokens
@@ -559,64 +565,13 @@ func (d *DB) GetSessionsPage(from, to time.Time, source, model, project, sort, d
 		LEFT JOIN (SELECT session_id, COUNT(*) as prompts
 			FROM prompt_events WHERE timestamp BETWEEN ? AND ?` + sf + ` GROUP BY session_id) p
 		ON s.session_id = p.session_id
-		WHERE u.session_id IS NOT NULL`
+		WHERE u.session_id IS NOT NULL` + projectClause
 
 	direction := "DESC"
 	if strings.EqualFold(dir, "asc") {
 		direction = "ASC"
 	}
 	orderExpr := sessionSortExpr(sort)
-
-	if projectKey != "" {
-		rows, err := d.db.Query(`SELECT s.session_id, s.source, s.project, s.cwd, s.git_branch,
-			COALESCE(s.start_time,''), COALESCE(s.update_time,''), COALESCE(p.prompts,0) as prompts,
-			COALESCE(u.cost,0) as total_cost, COALESCE(u.tokens,0) as tokens`+
-			baseQuery+` ORDER BY `+orderExpr+` `+direction+`, s.session_id ASC`, args...)
-		if err != nil {
-			return nil, err
-		}
-		defer rows.Close()
-
-		var filtered []SessionInfo
-		for rows.Next() {
-			var s SessionInfo
-			if err := rows.Scan(&s.SessionID, &s.Source, &s.Project, &s.CWD, &s.GitBranch, &s.StartTime, &s.UpdateTime, &s.Prompts, &s.TotalCost, &s.Tokens); err != nil {
-				return nil, err
-			}
-			key, _ := canonicalProject(s.Project, s.CWD)
-			if key == projectKey {
-				filtered = append(filtered, s)
-			}
-		}
-		if err := rows.Err(); err != nil {
-			return nil, err
-		}
-
-		total := len(filtered)
-		totalPages := 1
-		if total > 0 {
-			totalPages = (total + pageSize - 1) / pageSize
-		}
-		if page > totalPages {
-			page = totalPages
-		}
-		start := (page - 1) * pageSize
-		end := start + pageSize
-		if end > total {
-			end = total
-		}
-		items := []SessionInfo{}
-		if start < total {
-			items = filtered[start:end]
-		}
-		return &SessionPage{
-			Items:      items,
-			Page:       page,
-			PageSize:   pageSize,
-			Total:      total,
-			TotalPages: totalPages,
-		}, nil
-	}
 
 	var total int
 	if err := d.db.QueryRow(`SELECT COUNT(*)`+baseQuery, args...).Scan(&total); err != nil {

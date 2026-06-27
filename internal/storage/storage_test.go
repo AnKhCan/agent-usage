@@ -918,6 +918,61 @@ func TestProjectOptionsCanonicalizeCWD(t *testing.T) {
 	}
 }
 
+func TestGetSessionsPageProjectFilterUsesCanonicalFallback(t *testing.T) {
+	db := tempDB(t)
+	base := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	sessions := []*SessionRecord{
+		{Source: "codex", SessionID: "dot-cwd", Project: "fallback-project", CWD: ".", StartTime: base},
+		{Source: "claude", SessionID: "root-cwd", Project: "fallback-project", CWD: "/", StartTime: base.Add(time.Minute)},
+		{Source: "opencode", SessionID: "path-dot-cwd", Project: "fallback-project", CWD: "/tmp/.", StartTime: base.Add(2 * time.Minute)},
+		{Source: "kiro", SessionID: "other-project", Project: "other-project", CWD: "/", StartTime: base.Add(3 * time.Minute)},
+	}
+	for _, s := range sessions {
+		if err := db.UpsertSession(s); err != nil {
+			t.Fatalf("UpsertSession: %v", err)
+		}
+	}
+
+	records := []*UsageRecord{
+		{Source: "codex", SessionID: "dot-cwd", Model: "model-a", InputTokens: 1, Timestamp: base},
+		{Source: "claude", SessionID: "root-cwd", Model: "model-a", InputTokens: 1, Timestamp: base.Add(time.Minute)},
+		{Source: "opencode", SessionID: "path-dot-cwd", Model: "model-a", InputTokens: 1, Timestamp: base.Add(2 * time.Minute)},
+		{Source: "kiro", SessionID: "other-project", Model: "model-a", InputTokens: 1, Timestamp: base.Add(3 * time.Minute)},
+	}
+	if err := db.InsertUsageBatch(records); err != nil {
+		t.Fatalf("InsertUsageBatch: %v", err)
+	}
+
+	options, err := db.GetProjectOptions(base.Add(-time.Hour), base.Add(time.Hour), "", "")
+	if err != nil {
+		t.Fatalf("GetProjectOptions: %v", err)
+	}
+	var fallback ProjectOption
+	for _, option := range options {
+		if option.Key == "fallback-project" {
+			fallback = option
+			break
+		}
+	}
+	if fallback.Key == "" || fallback.Sessions != 3 {
+		t.Fatalf("expected fallback-project option with 3 sessions, got options=%+v", options)
+	}
+
+	page, err := db.GetSessionsPage(base.Add(-time.Hour), base.Add(time.Hour), "", "", fallback.Key, "start_time", "asc", 1, 20)
+	if err != nil {
+		t.Fatalf("GetSessionsPage project key: %v", err)
+	}
+	if page.Total != 3 || len(page.Items) != 3 {
+		t.Fatalf("expected fallback-project sessions, got total=%d items=%+v", page.Total, page.Items)
+	}
+	for _, item := range page.Items {
+		if item.SessionID == "other-project" {
+			t.Fatalf("other-project should not match fallback-project: %+v", page.Items)
+		}
+	}
+}
+
 func TestGetSessionsPageSortsStartTimeAcrossTimezones(t *testing.T) {
 	db := tempDB(t)
 	cst := time.FixedZone("CST", 8*60*60)

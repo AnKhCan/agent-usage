@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -105,15 +106,29 @@ func (c *OpenCodeCollector) processDB(dbPath string) error {
 		return fmt.Errorf("open %s db (file locked or unreadable): %w", c.source, err)
 	}
 
-	// Query assistant messages newer than watermark
-	rows, err := srcDB.Query(`
-		SELECT m.data, m.session_id, m.time_created, s.directory
+	// Query assistant messages newer than watermark.
+	// For mimocode, exclude sessions imported from Claude Code via its
+	// claude-import feature — those are already collected by the claude collector.
+	hasClaudeImport := false
+	if c.source == "mimocode" {
+		var tbl string
+		err := srcDB.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='claude_import'`).Scan(&tbl)
+		if err == nil {
+			hasClaudeImport = true
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			log.Printf("warning: %s claude_import table check failed: %v", c.source, err)
+		}
+	}
+	query := `SELECT m.data, m.session_id, m.time_created, s.directory
 		FROM message m
 		JOIN session s ON m.session_id = s.id
-		WHERE m.time_created > ?
-		ORDER BY m.time_created`,
-		lastWatermark,
-	)
+		WHERE m.time_created > ?`
+	args := []any{lastWatermark}
+	if hasClaudeImport {
+		query += ` AND m.session_id NOT IN (SELECT session_id FROM claude_import)`
+	}
+	query += ` ORDER BY m.time_created`
+	rows, err := srcDB.Query(query, args...)
 	if err != nil {
 		return fmt.Errorf("query %s messages: %w", c.source, err)
 	}
@@ -185,10 +200,13 @@ func (c *OpenCodeCollector) processDB(dbPath string) error {
 	// Collect user prompt events with timestamps
 	var promptEvents []*storage.PromptEvent
 	if len(sessions) > 0 {
-		promptRows, err := srcDB.Query(`
-			SELECT session_id, time_created FROM message
-			WHERE data LIKE '%"role":"user"%'
-			ORDER BY time_created`)
+		promptQuery := `SELECT session_id, time_created FROM message
+			WHERE data LIKE '%"role":"user"%'`
+		if hasClaudeImport {
+			promptQuery += ` AND session_id NOT IN (SELECT session_id FROM claude_import)`
+		}
+		promptQuery += ` ORDER BY time_created`
+		promptRows, err := srcDB.Query(promptQuery)
 		if err == nil {
 			defer promptRows.Close()
 			for promptRows.Next() {

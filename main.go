@@ -27,6 +27,7 @@ func main() {
 	}
 
 	configPath := flag.String("config", "", "path to config file")
+	resetData := flag.Bool("reset", false, "clear all collected data and re-scan from scratch (preserves aliases and pricing)")
 	flag.Parse()
 
 	cfg, err := config.Load(config.ResolveConfigPath(*configPath))
@@ -51,15 +52,25 @@ func main() {
 	}
 
 	// Check if version changed — if so, reset scan state to force full re-scan
-	// (needed when prompt counting logic or other parsing changes)
-	lastVer, _ := db.GetMeta("version")
-	if lastVer != "" && lastVer != version {
-		log.Printf("version changed (%s -> %s), resetting scan state for full re-scan", lastVer, version)
-		if err := db.ResetScanState(); err != nil {
-			log.Printf("reset scan state: %v", err)
+	// (needed when prompt counting logic or other parsing changes).
+	// Skip when --reset is used, since ResetData clears these tables anyway.
+	if !*resetData {
+		lastVer, _ := db.GetMeta("version")
+		if lastVer != "" && lastVer != version {
+			log.Printf("version changed (%s -> %s), resetting scan state for full re-scan", lastVer, version)
+			if err := db.ResetScanState(); err != nil {
+				log.Printf("reset scan state: %v", err)
+			}
 		}
 	}
 	db.SetMeta("version", version)
+
+	if *resetData {
+		log.Println("--reset: clearing all collected data (aliases and pricing preserved)")
+		if err := db.ResetData(); err != nil {
+			log.Fatalf("reset data: %v", err)
+		}
+	}
 
 	// Sync pricing
 	log.Println("syncing pricing data...")

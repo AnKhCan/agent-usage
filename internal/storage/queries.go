@@ -44,6 +44,23 @@ func (d *DB) ResetScanState() error {
 	return err
 }
 
+// ResetData clears all collected usage data while preserving user settings
+// (model_aliases, pricing, pricing_overrides). Callers should re-run
+// collectors and cost recalculation after this.
+func (d *DB) ResetData() error {
+	tx, err := d.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, tbl := range []string{"usage_records", "prompt_events", "file_state", "sessions"} {
+		if _, err := tx.Exec("DELETE FROM " + tbl); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 // GetFileState returns the last known size, read offset, and parser context for a file path.
 func (d *DB) GetFileState(path string) (size, offset int64, ctx *FileScanContext, err error) {
 	var raw sql.NullString

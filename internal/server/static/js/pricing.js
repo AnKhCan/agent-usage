@@ -561,6 +561,29 @@ async function deleteModelAlias(alias) {
   }
 }
 
+async function useAliasCandidate(btn) {
+  const alias = (btn.dataset.rawModel || '').trim();
+  const canonical = (btn.dataset.canonicalModel || '').trim();
+  if (!alias || !canonical) {
+    toastError(t('aliasRequired'));
+    return;
+  }
+  btn.disabled = true;
+  try {
+    await modelsRequest(`aliases/${encodeURIComponent(alias)}`, {
+      method: 'PUT',
+      body: { canonical_model: canonical, note: 'candidate' }
+    });
+    clearAliasEditor();
+    await loadAliasPage();
+    await updateModelManagementBadge();
+  } catch (err) {
+    toastError(`${t('saveFailed')}: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function applyAliasCandidate(index) {
   const item = (modelState.candidates || [])[index];
   if (!item) return;
@@ -686,10 +709,7 @@ function initPricingPage() {
     const btn = e.target.closest('[data-alias-action]');
     if (!btn) return;
     if (btn.dataset.aliasAction === 'use-candidate') {
-      openAliasEditor(btn.dataset.rawModel || '', {
-        canonical_model: btn.dataset.canonicalModel || '',
-        note: 'candidate'
-      }, { mode: 'new' });
+      useAliasCandidate(btn);
     }
     if (btn.dataset.aliasAction === 'edit-candidate-alias') {
       editCandidateAlias(btn.dataset.rawModel || '', btn.dataset.canonicalModel || '');
