@@ -14,6 +14,8 @@ type ModelAlias struct {
 	CanonicalModel string `json:"canonical_model"`
 	Note           string `json:"note"`
 	Source         string `json:"source"`
+	UsageCount     int    `json:"usage_count"`
+	TotalTokens    int64  `json:"total_tokens"`
 	CreatedAt      string `json:"created_at"`
 	UpdatedAt      string `json:"updated_at"`
 }
@@ -82,9 +84,19 @@ func (d *DB) ResolveModelName(raw string) (string, error) {
 
 // GetModelAliases returns user and config managed aliases.
 func (d *DB) GetModelAliases() ([]ModelAlias, error) {
-	rows, err := d.db.Query(`SELECT alias, canonical_model, note, source,
-		COALESCE(created_at,''), COALESCE(updated_at,'')
-		FROM model_aliases ORDER BY LOWER(alias) ASC`)
+	rows, err := d.db.Query(`SELECT ma.alias, ma.canonical_model, ma.note, ma.source,
+		COALESCE(u.usage_count,0), COALESCE(u.total_tokens,0),
+		COALESCE(ma.created_at,''), COALESCE(ma.updated_at,'')
+		FROM model_aliases ma
+		LEFT JOIN (
+			SELECT COALESCE(NULLIF(raw_model,''), model) AS raw_model,
+				COUNT(*) AS usage_count,
+				COALESCE(SUM(input_tokens+cache_read_input_tokens+cache_creation_input_tokens+output_tokens),0) AS total_tokens
+			FROM usage_records
+			WHERE COALESCE(NULLIF(raw_model,''), model) != ''
+			GROUP BY raw_model
+		) u ON u.raw_model=ma.alias
+		ORDER BY LOWER(ma.alias) ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +105,7 @@ func (d *DB) GetModelAliases() ([]ModelAlias, error) {
 	var result []ModelAlias
 	for rows.Next() {
 		var a ModelAlias
-		if err := rows.Scan(&a.Alias, &a.CanonicalModel, &a.Note, &a.Source, &a.CreatedAt, &a.UpdatedAt); err != nil {
+		if err := rows.Scan(&a.Alias, &a.CanonicalModel, &a.Note, &a.Source, &a.UsageCount, &a.TotalTokens, &a.CreatedAt, &a.UpdatedAt); err != nil {
 			return nil, err
 		}
 		result = append(result, a)

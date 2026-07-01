@@ -76,6 +76,9 @@ func TestModelAliasCRUD(t *testing.T) {
 	if len(aliases) != 1 || aliases[0].Alias != "provider/model-z" || aliases[0].CanonicalModel != "model-z" {
 		t.Fatalf("unexpected aliases: %+v", aliases)
 	}
+	if aliases[0].UsageCount != 1 || aliases[0].TotalTokens != 100 {
+		t.Fatalf("unexpected alias usage stats: %+v", aliases[0])
+	}
 
 	delReq := httptest.NewRequest(http.MethodDelete, "/api/models/aliases/provider%2Fmodel-z", nil)
 	delRec := httptest.NewRecorder()

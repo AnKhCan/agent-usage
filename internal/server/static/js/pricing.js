@@ -10,9 +10,31 @@ let modelState = {
   aliases: [],
   candidates: [],
   editingAlias: '',
+  aliasOpen: {},
+  aliasQuery: '',
   candidateOpen: {},
   activeTab: 'pricing'
 };
+
+const modalOpenClasses = ['pricing-editor-open', 'alias-editor-open'];
+
+function lockBodyForModal(openClass) {
+  if (!document.body.classList.contains('modal-open')) {
+    const scrollbarWidth = Math.max(0, window.innerWidth - document.documentElement.clientWidth);
+    document.body.style.setProperty('--modal-scrollbar-compensation', `${scrollbarWidth}px`);
+    document.body.classList.add('modal-open');
+  }
+  document.body.classList.add(openClass);
+}
+
+function unlockBodyForModal(openClass) {
+  document.body.classList.remove(openClass);
+  const stillOpen = modalOpenClasses.some(cls => document.body.classList.contains(cls));
+  if (!stillOpen) {
+    document.body.classList.remove('modal-open');
+    document.body.style.removeProperty('--modal-scrollbar-compensation');
+  }
+}
 
 async function jsonRequest(prefix, path, opts = {}) {
   const init = { method: opts.method || 'GET', headers: opts.headers || {} };
@@ -205,14 +227,17 @@ function openPricingEditor(model, data = {}) {
   $('price-note').value = data.note || '';
   $('pricing-message').textContent = '';
   $('pricing-message').className = 'pricing-message';
-  $('pricing-editor').hidden = false;
-  $('pricing-editor').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  const editor = $('pricing-editor');
+  editor.hidden = false;
+  lockBodyForModal('pricing-editor-open');
+  setTimeout(() => $('price-input').focus(), 0);
 }
 
 function closePricingEditor() {
   pricingState.editingModel = '';
   const editor = $('pricing-editor');
   if (editor) editor.hidden = true;
+  unlockBodyForModal('pricing-editor-open');
 }
 
 function pricingNumber(id) {
@@ -280,28 +305,157 @@ async function syncPricingNow() {
   }
 }
 
+function compareModelNames(a, b) {
+  return String(a || '').trim().localeCompare(String(b || '').trim(), undefined, {
+    numeric: true,
+    sensitivity: 'base'
+  });
+}
+
+function aliasGroupKey(canonical) {
+  return String(canonical || '').trim() || '__uncategorized__';
+}
+
+function buildAliasGroups(items) {
+  const groupsByCanonical = new Map();
+  (items || []).forEach(item => {
+    const canonical = String((item && item.canonical_model) || '').trim() || t('uncategorizedModel');
+    const key = aliasGroupKey(canonical);
+    if (!groupsByCanonical.has(key)) {
+      groupsByCanonical.set(key, { key, canonical, rows: [] });
+    }
+    groupsByCanonical.get(key).rows.push(item);
+  });
+  const groups = Array.from(groupsByCanonical.values());
+  groups.forEach(group => {
+    group.rows.sort((a, b) => compareModelNames(a.alias, b.alias));
+  });
+  groups.sort((a, b) => compareModelNames(a.canonical, b.canonical));
+  return groups;
+}
+
+function aliasSearchText(item) {
+  return [
+    item && item.alias,
+    item && item.canonical_model,
+    item && item.source,
+    item && item.note,
+    aliasSourceLabel(item && item.source)
+  ].filter(Boolean).join(' ').toLowerCase();
+}
+
+function filterAliasGroups(groups) {
+  const query = String(modelState.aliasQuery || '').trim().toLowerCase();
+  if (!query) return groups.map(group => ({ ...group, rows: group.rows, queryMatch: false }));
+  return groups.map(group => {
+    const canonicalMatch = String(group.canonical || '').toLowerCase().includes(query);
+    const rows = canonicalMatch ? group.rows : group.rows.filter(row => aliasSearchText(row).includes(query));
+    return { ...group, rows, queryMatch: canonicalMatch || rows.length > 0 };
+  }).filter(group => group.rows.length > 0);
+}
+
+function aliasGroupExpanded(group, idx, totalGroups) {
+  if (String(modelState.aliasQuery || '').trim()) return true;
+  if (Object.prototype.hasOwnProperty.call(modelState.aliasOpen, group.key)) {
+    return !!modelState.aliasOpen[group.key];
+  }
+  return totalGroups <= 1 && idx === 0;
+}
+
+function toggleAliasGroup(btn) {
+  const key = btn.dataset.aliasGroupKey;
+  if (!key) return;
+  modelState.aliasOpen[key] = btn.getAttribute('aria-expanded') !== 'true';
+  renderAliases();
+}
+
+function aliasGroupSourceSummary(rows) {
+  const counts = new Map();
+  (rows || []).forEach(row => {
+    const label = aliasSourceLabel(row && row.source);
+    counts.set(label, (counts.get(label) || 0) + 1);
+  });
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([label, count]) => `${label} ${fmt(count)}`)
+    .join(' / ');
+}
+
+function aliasUsageText(item) {
+  return `${fmt(Number(item && item.total_tokens) || 0)} ${t('tokens')} | ${fmt(Number(item && item.usage_count) || 0)} ${t('calls')}`;
+}
+
+function renderAliasPreview(rows) {
+  const visible = (rows || []).slice(0, 3);
+  const extra = Math.max(0, (rows || []).length - visible.length);
+  return `<span class="alias-group-preview">
+    ${visible.map(row => `<span class="alias-group-chip" title="${esc(row.alias)}"><span>${esc(row.alias)}</span></span>`).join('')}
+    ${extra ? `<span class="alias-group-chip muted"><span>${esc(tf('moreAliases', { count: fmt(extra) }))}</span></span>` : ''}
+  </span>`;
+}
+
+function syncAliasSearchInput() {
+  const input = $('alias-search-input');
+  if (!input) return;
+  input.placeholder = t('aliasSearchPlaceholder');
+  if (input.value !== modelState.aliasQuery) input.value = modelState.aliasQuery;
+}
+
 function renderAliases() {
   const box = $('alias-list');
   const count = $('alias-count');
   if (!box) return;
   const items = modelState.aliases || [];
+  syncAliasSearchInput();
   if (count) count.textContent = items.length;
   if (items.length === 0) {
     box.innerHTML = `<div class="pricing-empty">${esc(t('noAliases'))}</div>`;
     return;
   }
-  box.innerHTML = `<table class="pricing-table alias-table"><thead><tr>
-    <th>${esc(t('rawAlias'))}</th><th>${esc(t('canonicalModel'))}</th><th>${esc(t('source'))}</th><th>${esc(t('note'))}</th><th></th>
-  </tr></thead><tbody>${items.map(item => `<tr>
-    <td data-label="${esc(t('rawAlias'))}"><div class="pricing-model-name alias-model-name" title="${esc(item.alias)}">${esc(item.alias)}</div></td>
-    <td data-label="${esc(t('canonicalModel'))}"><div class="pricing-model-name alias-model-name" title="${esc(item.canonical_model)}">${esc(item.canonical_model)}</div></td>
-    <td data-label="${esc(t('source'))}"><span class="alias-source-pill ${esc(item.source || '')}">${esc(aliasSourceLabel(item.source))}</span></td>
-    <td data-label="${esc(t('note'))}">${esc(item.note || '-')}</td>
-    <td class="pricing-actions-cell">
-      <button type="button" class="pricing-mini-btn" data-alias-action="edit" data-alias="${esc(item.alias)}">${esc(t('edit'))}</button>
-      <button type="button" class="pricing-mini-btn danger" data-alias-action="delete" data-alias="${esc(item.alias)}">${esc(t('delete'))}</button>
-    </td>
-  </tr>`).join('')}</tbody></table>`;
+  const groups = filterAliasGroups(buildAliasGroups(items));
+  if (groups.length === 0) {
+    box.innerHTML = `<div class="pricing-empty">${esc(t('noAliasSearchResults'))}</div>`;
+    return;
+  }
+  box.innerHTML = `<div class="alias-group-stack">${groups.map((group, idx) => {
+    const expanded = aliasGroupExpanded(group, idx, groups.length);
+    const panelID = `alias-group-panel-${idx}`;
+    const sourceSummary = aliasGroupSourceSummary(group.rows);
+    return `<div class="alias-group-card ${expanded ? 'open' : 'collapsed'}">
+      <div class="alias-group-head">
+        <button type="button" class="alias-group-toggle" data-alias-action="toggle-alias-group" data-alias-group-key="${esc(group.key)}" aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="${esc(panelID)}" aria-label="${esc(tf('toggleAliasGroup', { model: group.canonical || '-' }))}">
+          <span class="alias-group-chevron" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>
+          </span>
+          <span class="alias-group-title">
+            <span class="alias-group-name" title="${esc(group.canonical)}">${esc(group.canonical)}</span>
+            <span class="alias-group-meta">${esc(tf('aliasGroupMeta', { count: fmt(group.rows.length) }))}${sourceSummary ? ` | ${esc(sourceSummary)}` : ''}</span>
+          </span>
+        </button>
+        ${renderAliasPreview(group.rows)}
+      </div>
+      <div class="alias-group-rows" id="${esc(panelID)}" ${expanded ? '' : 'hidden'}><div class="alias-group-rows-inner">
+        ${group.rows.map(item => `<div class="alias-group-row">
+          <div class="alias-group-col alias-group-raw" data-label="${esc(t('rawAlias'))}">
+            <div class="pricing-model-name alias-model-name" title="${esc(item.alias)}">${esc(item.alias)}</div>
+          </div>
+          <div class="alias-group-col alias-group-usage" data-label="${esc(t('usageStats'))}">
+            <span class="alias-usage-value" title="${esc(aliasUsageText(item))}">${esc(aliasUsageText(item))}</span>
+          </div>
+          <div class="alias-group-col" data-label="${esc(t('source'))}">
+            <span class="alias-source-pill ${esc(item.source || '')}">${esc(aliasSourceLabel(item.source))}</span>
+          </div>
+          <div class="alias-group-col alias-group-note" data-label="${esc(t('note'))}">
+            <span class="alias-note-value" title="${esc(item.note || '-')}">${esc(item.note || '-')}</span>
+          </div>
+          <div class="alias-group-col alias-group-actions" data-label="">
+            <button type="button" class="pricing-mini-btn" data-alias-action="edit" data-alias="${esc(item.alias)}">${esc(t('edit'))}</button>
+            <button type="button" class="pricing-mini-btn danger" data-alias-action="delete" data-alias="${esc(item.alias)}">${esc(t('delete'))}</button>
+          </div>
+        </div>`).join('')}
+      </div></div>
+    </div>`;
+  }).join('')}</div>`;
 }
 
 function aliasCandidatePendingVariants(item) {
@@ -457,14 +611,211 @@ function renderAliasPageFromState() {
 // Populate the canonical-model datalist from all known model names so the alias
 // editor can offer autocomplete suggestions and reduce typos.
 function refreshCanonicalDatalist() {
-  const dl = $('alias-canonical-options');
-  if (!dl) return;
+  const names = canonicalModelNames();
+  canonicalComboboxSync(names);
+}
+
+function canonicalModelNames() {
   const names = new Set();
   (pricingState.overrides || []).forEach(o => { if (o && o.model) names.add(o.model); });
   (pricingState.missing || []).forEach(m => { if (m && m.model) names.add(m.model); });
   (modelState.aliases || []).forEach(a => { if (a && a.canonical_model) names.add(a.canonical_model); });
   (modelState.candidates || []).forEach(c => { if (c && c.canonical_model) names.add(c.canonical_model); });
-  dl.innerHTML = Array.from(names).sort((a, b) => a.localeCompare(b)).map(n => `<option value="${esc(n)}">`).join('');
+  return Array.from(names).sort((a, b) => a.localeCompare(b));
+}
+
+let canonicalComboboxState = {
+  names: [],
+  filtered: [],
+  activeIndex: -1,
+  open: false
+};
+
+function canonicalComboboxFilter(query) {
+  const q = String(query || '').trim().toLowerCase();
+  const names = canonicalComboboxState.names || [];
+  if (!q) return names.slice();
+  return names.filter(n => String(n).toLowerCase().includes(q));
+}
+
+function canonicalComboboxRender() {
+  const menu = $('alias-canonical-menu');
+  if (!menu) return;
+  const list = canonicalComboboxState.filtered;
+  if (list.length === 0) {
+    menu.innerHTML = `<div class="canonical-combobox-empty">${esc(t('noAliasSearchResults'))}</div>`;
+    return;
+  }
+  menu.innerHTML = list.map((name, i) => `<button type="button" class="canonical-combobox-option${i === canonicalComboboxState.activeIndex ? ' active' : ''}" role="option" aria-selected="${i === canonicalComboboxState.activeIndex ? 'true' : 'false'}" data-value="${esc(name)}">${esc(name)}</button>`).join('');
+}
+
+function canonicalComboboxSync(names) {
+  canonicalComboboxState.names = names || [];
+  if (canonicalComboboxState.open) {
+    canonicalComboboxState.filtered = canonicalComboboxFilter($('alias-canonical-input').value);
+    canonicalComboboxState.activeIndex = -1;
+    canonicalComboboxRender();
+    canonicalComboboxPositionMenu();
+  }
+}
+
+function canonicalComboboxPositionMenu() {
+  const input = $('alias-canonical-input');
+  const menu = $('alias-canonical-menu');
+  if (!canonicalComboboxState.open || !input || !menu || menu.hidden) return;
+
+  const rect = input.getBoundingClientRect();
+  const gap = 8;
+  const edge = 16;
+  const maxViewportWidth = Math.max(180, window.innerWidth - edge * 2);
+  const width = Math.min(420, maxViewportWidth, Math.max(180, rect.width));
+  const left = Math.min(Math.max(edge, rect.left), Math.max(edge, window.innerWidth - edge - width));
+  const below = window.innerHeight - rect.bottom - gap;
+  const above = rect.top - gap;
+  const dropUp = below < 180 && above > below;
+  const availableHeight = Math.max(80, Math.floor(dropUp ? above : below));
+
+  menu.style.setProperty('--canonical-menu-left', `${Math.round(left)}px`);
+  menu.style.setProperty('--canonical-menu-width', `${Math.round(width)}px`);
+  menu.style.setProperty('--canonical-menu-max-height', `${Math.min(240, availableHeight)}px`);
+  if (dropUp) {
+    menu.classList.add('drop-up');
+    menu.style.removeProperty('--canonical-menu-top');
+    menu.style.setProperty('--canonical-menu-bottom', `${Math.round(window.innerHeight - rect.top + gap)}px`);
+  } else {
+    menu.classList.remove('drop-up');
+    menu.style.removeProperty('--canonical-menu-bottom');
+    menu.style.setProperty('--canonical-menu-top', `${Math.round(rect.bottom + gap)}px`);
+  }
+}
+
+function canonicalComboboxOpen() {
+  const box = $('alias-canonical-combobox');
+  const menu = $('alias-canonical-menu');
+  if (!box || !menu) return;
+  if (menu.parentElement !== document.body) document.body.appendChild(menu);
+  canonicalComboboxState.open = true;
+  canonicalComboboxState.filtered = canonicalComboboxFilter($('alias-canonical-input').value);
+  canonicalComboboxState.activeIndex = -1;
+  box.classList.add('open');
+  menu.hidden = false;
+  canonicalComboboxRender();
+  canonicalComboboxPositionMenu();
+  requestAnimationFrame(() => {
+    if (!canonicalComboboxState.open || menu.hidden) return;
+    menu.classList.add('open');
+    canonicalComboboxPositionMenu();
+  });
+}
+
+function canonicalComboboxClose() {
+  const box = $('alias-canonical-combobox');
+  const menu = $('alias-canonical-menu');
+  if (box) box.classList.remove('open');
+  if (menu) {
+    menu.classList.remove('open', 'drop-up');
+    menu.hidden = true;
+    menu.style.removeProperty('--canonical-menu-top');
+    menu.style.removeProperty('--canonical-menu-bottom');
+  }
+  canonicalComboboxState.open = false;
+}
+
+function canonicalComboboxToggle() {
+  if (canonicalComboboxState.open) canonicalComboboxClose();
+  else canonicalComboboxOpen();
+}
+
+function canonicalComboboxCommit(value) {
+  const input = $('alias-canonical-input');
+  if (!input) return;
+  input.value = value || '';
+  canonicalComboboxClose();
+  input.focus();
+}
+
+function canonicalComboboxMove(delta) {
+  const list = canonicalComboboxState.filtered;
+  if (list.length === 0) return;
+  let idx = canonicalComboboxState.activeIndex + delta;
+  if (idx < 0) idx = list.length - 1;
+  if (idx >= list.length) idx = 0;
+  canonicalComboboxState.activeIndex = idx;
+  canonicalComboboxRender();
+  const menu = $('alias-canonical-menu');
+  const active = menu && menu.querySelector('.canonical-combobox-option.active');
+  if (active) active.scrollIntoView({ block: 'nearest' });
+}
+
+function initCanonicalCombobox() {
+  const box = $('alias-canonical-combobox');
+  const input = $('alias-canonical-input');
+  const caret = $('alias-canonical-caret');
+  const menu = $('alias-canonical-menu');
+  if (!box || !input || !menu) return;
+  input.addEventListener('input', () => {
+    if (canonicalComboboxState.open) {
+      canonicalComboboxState.filtered = canonicalComboboxFilter(input.value);
+      canonicalComboboxState.activeIndex = -1;
+      canonicalComboboxRender();
+      canonicalComboboxPositionMenu();
+    }
+  });
+  input.addEventListener('focus', () => {
+    if (!canonicalComboboxState.open) canonicalComboboxOpen();
+  });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (!canonicalComboboxState.open) canonicalComboboxOpen();
+      else canonicalComboboxMove(1);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (canonicalComboboxState.open) canonicalComboboxMove(-1);
+    } else if (e.key === 'Enter') {
+      if (canonicalComboboxState.open && canonicalComboboxState.activeIndex >= 0) {
+        e.preventDefault();
+        const value = canonicalComboboxState.filtered[canonicalComboboxState.activeIndex];
+        canonicalComboboxCommit(value);
+      }
+    } else if (e.key === 'Escape') {
+      if (canonicalComboboxState.open) {
+        e.stopPropagation();
+        canonicalComboboxClose();
+      }
+    }
+  });
+  if (caret) {
+    caret.addEventListener('click', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      canonicalComboboxToggle();
+      if (canonicalComboboxState.open) input.focus();
+    });
+  }
+  menu.addEventListener('click', e => {
+    const opt = e.target.closest('.canonical-combobox-option');
+    if (!opt) return;
+    canonicalComboboxCommit(opt.dataset.value);
+  });
+  menu.addEventListener('mousemove', e => {
+    const opt = e.target.closest('.canonical-combobox-option');
+    if (!opt) return;
+    const opts = Array.from(menu.querySelectorAll('.canonical-combobox-option'));
+    const idx = opts.indexOf(opt);
+    if (idx >= 0 && idx !== canonicalComboboxState.activeIndex) {
+      canonicalComboboxState.activeIndex = idx;
+      canonicalComboboxRender();
+    }
+  });
+  document.addEventListener('click', e => {
+    if (!canonicalComboboxState.open) return;
+    if (box.contains(e.target)) return;
+    if (menu.contains(e.target)) return;
+    canonicalComboboxClose();
+  });
+  window.addEventListener('resize', canonicalComboboxPositionMenu);
+  window.addEventListener('scroll', canonicalComboboxPositionMenu, true);
 }
 
 async function loadAliasPage() {
@@ -482,6 +833,9 @@ function openAliasEditor(alias = '', data = {}, opts = {}) {
   modelState.editingAlias = editingExisting ? alias : '';
   const editor = $('alias-editor');
   if (editor) editor.hidden = false;
+  lockBodyForModal('alias-editor-open');
+  const title = $('alias-editor-title');
+  if (title) title.textContent = editingExisting ? t('editAlias') : t('newAlias');
   const input = $('alias-input');
   input.value = alias;
   input.disabled = editingExisting;
@@ -489,13 +843,15 @@ function openAliasEditor(alias = '', data = {}, opts = {}) {
   $('alias-note-input').value = data.note || '';
   $('alias-message').textContent = '';
   $('alias-message').className = 'pricing-message';
-  $('alias-editor').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  setTimeout(() => (editingExisting ? $('alias-canonical-input') : input).focus(), 0);
 }
 
 function clearAliasEditor() {
   modelState.editingAlias = '';
+  canonicalComboboxClose();
   const editor = $('alias-editor');
   if (editor) editor.hidden = true;
+  unlockBodyForModal('alias-editor-open');
   const input = $('alias-input');
   input.value = '';
   input.disabled = false;
@@ -536,6 +892,7 @@ async function saveModelAlias(e) {
       method: 'PUT',
       body: { canonical_model: canonical, note: $('alias-note-input').value.trim() }
     });
+    modelState.aliasOpen[aliasGroupKey(canonical)] = true;
     msg.textContent = t('saved');
     msg.className = 'pricing-message ok';
     await loadAliasPage();
@@ -631,6 +988,8 @@ function activateModelsTab(tab) {
   const aliasesPanel = $('models-aliases-panel');
   if (pricingPanel) pricingPanel.hidden = modelState.activeTab !== 'pricing';
   if (aliasesPanel) aliasesPanel.hidden = modelState.activeTab !== 'aliases';
+  if (modelState.activeTab !== 'pricing') closePricingEditor();
+  if (modelState.activeTab !== 'aliases') clearAliasEditor();
   document.querySelectorAll('.models-pricing-action').forEach(el => {
     el.hidden = modelState.activeTab !== 'pricing';
   });
@@ -658,6 +1017,7 @@ function setModelRouteVisible() {
     loadModelsTab(tab).catch(() => {});
   } else {
     closePricingEditor();
+    clearAliasEditor();
     Object.values(charts).forEach(c => c && c.resize());
   }
 }
@@ -697,9 +1057,29 @@ function initPricingPage() {
   $('alias-cancel-btn').onclick = clearAliasEditor;
   $('alias-editor-clear').onclick = clearAliasEditor;
   $('alias-new-btn').onclick = () => openAliasEditor();
+  initCanonicalCombobox();
+  const aliasSearch = $('alias-search-input');
+  if (aliasSearch) {
+    aliasSearch.oninput = e => {
+      modelState.aliasQuery = e.target.value;
+      renderAliases();
+    };
+  }
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && document.body.classList.contains('alias-editor-open')) {
+      clearAliasEditor();
+    }
+    if (e.key === 'Escape' && document.body.classList.contains('pricing-editor-open')) {
+      closePricingEditor();
+    }
+  });
   $('alias-list').onclick = e => {
     const btn = e.target.closest('[data-alias-action]');
     if (!btn) return;
+    if (btn.dataset.aliasAction === 'toggle-alias-group') {
+      toggleAliasGroup(btn);
+      return;
+    }
     const alias = btn.dataset.alias;
     const item = (modelState.aliases || []).find(a => a.alias === alias);
     if (btn.dataset.aliasAction === 'edit' && item) openAliasEditor(item.alias, item);

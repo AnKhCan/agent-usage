@@ -186,7 +186,7 @@
     <div class="pricing-status-grid" id="pricing-status-grid"></div>
     <div class="pricing-status-grid pricing-config-grid" id="pricing-config-grid"></div>
 
-    <form class="pricing-editor" id="pricing-editor" hidden>
+    <form class="pricing-editor pricing-editor-modal" id="pricing-editor" hidden>
       <div class="pricing-editor-head">
         <div>
           <div class="pricing-kicker" data-i18n="manualPrice">Manual Price</div>
@@ -241,7 +241,15 @@
         </div>
         <div class="pricing-form-grid alias-form-grid">
           <label><span data-i18n="rawAlias">Raw model / alias</span><input type="text" id="alias-input" required></label>
-          <label><span data-i18n="canonicalModel">Canonical model</span><input type="text" id="alias-canonical-input" list="alias-canonical-options" autocomplete="off" required><datalist id="alias-canonical-options"></datalist></label>
+          <label><span data-i18n="canonicalModel">Canonical model</span>
+            <div class="canonical-combobox" id="alias-canonical-combobox">
+              <input type="text" id="alias-canonical-input" autocomplete="off" required>
+              <button type="button" class="canonical-combobox-caret" id="alias-canonical-caret" aria-label="Show options" tabindex="-1">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+              </button>
+              <div class="canonical-combobox-menu" id="alias-canonical-menu" role="listbox" hidden></div>
+            </div>
+          </label>
           <label class="alias-note-field"><span data-i18n="note">Note</span><input type="text" id="alias-note-input"></label>
         </div>
         <div class="pricing-editor-actions">
@@ -256,6 +264,7 @@
           <div class="pricing-panel-head">
             <h2 data-i18n="aliasesTab">Aliases</h2>
             <div class="pricing-panel-head-actions">
+              <input type="text" class="alias-search-input" id="alias-search-input" autocomplete="off" data-i18n-placeholder="aliasSearchPlaceholder">
               <button type="button" class="pricing-mini-btn" id="alias-new-btn" data-i18n="newAlias">New Alias</button>
               <span class="pricing-count" id="alias-count">0</span>
             </div>

@@ -249,6 +249,7 @@ function normalizeDateState() {
 function buildControls() {
   normalizeDateState();
   document.querySelectorAll('[data-i18n]').forEach(el => el.textContent = t(el.dataset.i18n));
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => el.placeholder = t(el.dataset.i18nPlaceholder));
   const modelBtn = $('model-management-btn');
   if (modelBtn) {
     modelBtn.title = t('modelManagement');
