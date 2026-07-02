@@ -101,6 +101,107 @@ function showToast(message, opts = {}) {
 function toastError(msg, opts) { return showToast(msg, { ...opts, type: 'error' }); }
 function toastOk(msg, opts) { return showToast(msg, { ...opts, type: 'ok' }); }
 
+// ── Tooltip ──
+// Single shared floating tooltip used by any element with [data-tooltip].
+// Implemented as one fixed-position element moved via JS so it escapes
+// ancestors with overflow:hidden (e.g. .pricing-panel, .pricing-table-wrap,
+// .alias-group-card) that would otherwise clip a CSS ::before pseudo.
+let tooltipEl = null;
+const tooltipSelector = '[data-tooltip], [data-tooltip-on-overflow]';
+function ensureTooltipEl() {
+  if (tooltipEl && document.body.contains(tooltipEl)) return tooltipEl;
+  tooltipEl = document.createElement('div');
+  tooltipEl.className = 'app-tooltip';
+  tooltipEl.setAttribute('role', 'tooltip');
+  tooltipEl.hidden = true;
+  document.body.appendChild(tooltipEl);
+  return tooltipEl;
+}
+function positionTooltip(target, el) {
+  const r = target.getBoundingClientRect();
+  const tw = el.offsetWidth;
+  const vw = window.innerWidth;
+  const alignRight = target.classList.contains('trend-compare-chip');
+  const desiredLeft = alignRight ? r.right - tw : r.left;
+  const left = Math.min(Math.max(8, desiredLeft), Math.max(8, vw - tw - 8));
+  const arrowLeft = Math.min(Math.max(r.left + (r.width / 2) - left, 14), Math.max(14, tw - 14));
+  el.style.top = `${r.bottom + 9}px`;
+  el.style.left = `${left}px`;
+  el.style.setProperty('--tooltip-arrow-left', `${arrowLeft}px`);
+}
+function isTooltipOverflowing(target) {
+  if (target.scrollWidth > target.clientWidth + 1 || target.scrollHeight > target.clientHeight + 1) return true;
+  const r = target.getBoundingClientRect();
+  let node = target.parentElement;
+  while (node && node !== document.body) {
+    const style = getComputedStyle(node);
+    if (/(auto|scroll|hidden|clip)/.test(`${style.overflow}${style.overflowX}${style.overflowY}`)) {
+      const nr = node.getBoundingClientRect();
+      if (r.left < nr.left - 1 || r.right > nr.right + 1 || r.top < nr.top - 1 || r.bottom > nr.bottom + 1) {
+        return true;
+      }
+    }
+    node = node.parentElement;
+  }
+  return false;
+}
+function tooltipText(target) {
+  if (target.hasAttribute('data-tooltip-on-overflow') && !isTooltipOverflowing(target)) return '';
+  return target.getAttribute('data-tooltip') || target.getAttribute('data-tooltip-on-overflow') || '';
+}
+function showTooltip(target) {
+  const text = tooltipText(target);
+  if (!text) return;
+  const el = ensureTooltipEl();
+  el.textContent = text;
+  el.hidden = false;
+  positionTooltip(target, el);
+}
+function moveTooltip(target) {
+  if (!tooltipEl || tooltipEl.hidden) return;
+  if (!target || !target.matches(tooltipSelector)) { hideTooltip(); return; }
+  const text = tooltipText(target);
+  if (!text) { hideTooltip(); return; }
+  tooltipEl.textContent = text;
+  positionTooltip(target, tooltipEl);
+}
+function hideTooltip() {
+  if (!tooltipEl || tooltipEl.hidden) return;
+  tooltipEl.hidden = true;
+}
+function bindDataTooltipHost(root) {
+  root.addEventListener('mouseover', e => {
+    const tgt = e.target.closest(tooltipSelector);
+    if (!tgt || !root.contains(tgt)) return;
+    showTooltip(tgt);
+  });
+  root.addEventListener('mousemove', e => {
+    const tgt = e.target.closest(tooltipSelector);
+    if (!tgt || !root.contains(tgt)) return;
+    moveTooltip(tgt);
+  });
+  root.addEventListener('mouseout', e => {
+    const tgt = e.target.closest(tooltipSelector);
+    if (!tgt || !root.contains(tgt)) return;
+    const to = e.relatedTarget;
+    if (to && tgt.contains(to)) return;
+    hideTooltip();
+  });
+  root.addEventListener('focusin', e => {
+    const tgt = e.target.closest && e.target.closest(tooltipSelector);
+    if (!tgt || !root.contains(tgt)) return;
+    showTooltip(tgt);
+  });
+  root.addEventListener('focusout', e => {
+    const tgt = e.target.closest && e.target.closest(tooltipSelector);
+    if (!tgt || !root.contains(tgt)) return;
+    hideTooltip();
+  });
+}
+document.addEventListener('DOMContentLoaded', () => bindDataTooltipHost(document.body));
+window.addEventListener('scroll', hideTooltip, true);
+window.addEventListener('resize', hideTooltip, true);
+
 // ── i18n ──
 const I18N = {
   en: {

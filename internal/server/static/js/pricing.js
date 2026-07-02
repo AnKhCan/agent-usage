@@ -88,6 +88,11 @@ function aliasSourceLabel(source) {
   return source || '-';
 }
 
+function overflowTooltipAttr(value) {
+  const text = value == null ? '' : String(value);
+  return text ? ` data-tooltip-on-overflow="${esc(text)}"` : '';
+}
+
 function tf(key, vars = {}) {
   return Object.entries(vars).reduce((s, [k, v]) => s.replaceAll(`{${k}}`, v), t(key));
 }
@@ -120,7 +125,7 @@ function setStatusGrid(id, cells) {
       : esc(value);
     return `<div class="pricing-status-item">
     <div class="pricing-status-label">${esc(label)}</div>
-    <div class="pricing-status-value ${cls || ''}" title="${esc(value)}">${inner}</div>
+    <div class="pricing-status-value ${cls || ''}"${overflowTooltipAttr(value)}>${inner}</div>
   </div>`;
   }).join('');
 }
@@ -138,7 +143,7 @@ function renderMissingPrices() {
   box.innerHTML = `<table class="pricing-table"><thead><tr>
     <th>${esc(t('model'))}</th><th>${esc(t('source'))}</th><th>${esc(t('calls'))}</th><th>${esc(t('tokens'))}</th><th>${esc(t('time'))}</th><th></th>
   </tr></thead><tbody>${items.map(item => `<tr>
-    <td><div class="pricing-model-name" title="${esc(item.model)}">${esc(item.model)}</div></td>
+    <td><div class="pricing-model-name"${overflowTooltipAttr(item.model)}>${esc(item.model)}</div></td>
     <td>${esc(pricingSourcesLabel(item.sources))}</td>
     <td>${fmt(item.usage_count || 0)}</td>
     <td>${fmt(item.total_tokens || 0)}</td>
@@ -160,7 +165,7 @@ function renderPricingOverrides() {
   box.innerHTML = `<table class="pricing-table compact"><thead><tr>
     <th>${esc(t('model'))}</th><th>${esc(t('input'))}</th><th>${esc(t('output'))}</th><th>${esc(t('cacheRead'))}</th><th>${esc(t('cacheCreate'))}</th><th></th>
   </tr></thead><tbody>${items.map(item => `<tr>
-    <td><div class="pricing-model-name" title="${esc(item.model)}">${esc(item.model)}</div>${item.note ? `<div class="pricing-model-meta">${esc(item.note)}</div>` : ''}</td>
+    <td><div class="pricing-model-name"${overflowTooltipAttr(item.model)}>${esc(item.model)}</div>${item.note ? `<div class="pricing-model-meta">${esc(item.note)}</div>` : ''}</td>
     <td class="pricing-price-value">${fmtPrice(item.input_cost_per_token)}</td>
     <td class="pricing-price-value">${fmtPrice(item.output_cost_per_token)}</td>
     <td class="pricing-price-value">${fmtPrice(item.cache_read_input_token_cost)}</td>
@@ -389,7 +394,7 @@ function renderAliasPreview(rows) {
   const visible = (rows || []).slice(0, 3);
   const extra = Math.max(0, (rows || []).length - visible.length);
   return `<span class="alias-group-preview">
-    ${visible.map(row => `<span class="alias-group-chip" title="${esc(row.alias)}"><span>${esc(row.alias)}</span></span>`).join('')}
+    ${visible.map(row => `<span class="alias-group-chip"><span${overflowTooltipAttr(row.alias)}>${esc(row.alias)}</span></span>`).join('')}
     ${extra ? `<span class="alias-group-chip muted"><span>${esc(tf('moreAliases', { count: fmt(extra) }))}</span></span>` : ''}
   </span>`;
 }
@@ -428,7 +433,7 @@ function renderAliases() {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>
           </span>
           <span class="alias-group-title">
-            <span class="alias-group-name" title="${esc(group.canonical)}">${esc(group.canonical)}</span>
+            <span class="alias-group-name"${overflowTooltipAttr(group.canonical)}>${esc(group.canonical)}</span>
             <span class="alias-group-meta">${esc(tf('aliasGroupMeta', { count: fmt(group.rows.length) }))}${sourceSummary ? ` | ${esc(sourceSummary)}` : ''}</span>
           </span>
         </button>
@@ -437,16 +442,16 @@ function renderAliases() {
       <div class="alias-group-rows" id="${esc(panelID)}" ${expanded ? '' : 'hidden'}><div class="alias-group-rows-inner">
         ${group.rows.map(item => `<div class="alias-group-row">
           <div class="alias-group-col alias-group-raw" data-label="${esc(t('rawAlias'))}">
-            <div class="pricing-model-name alias-model-name" title="${esc(item.alias)}">${esc(item.alias)}</div>
+            <div class="pricing-model-name alias-model-name"${overflowTooltipAttr(item.alias)}>${esc(item.alias)}</div>
           </div>
           <div class="alias-group-col alias-group-usage" data-label="${esc(t('usageStats'))}">
-            <span class="alias-usage-value" title="${esc(aliasUsageText(item))}">${esc(aliasUsageText(item))}</span>
+            <span class="alias-usage-value"${overflowTooltipAttr(aliasUsageText(item))}>${esc(aliasUsageText(item))}</span>
           </div>
           <div class="alias-group-col" data-label="${esc(t('source'))}">
             <span class="alias-source-pill ${esc(item.source || '')}">${esc(aliasSourceLabel(item.source))}</span>
           </div>
           <div class="alias-group-col alias-group-note" data-label="${esc(t('note'))}">
-            <span class="alias-note-value" title="${esc(item.note || '-')}">${esc(item.note || '-')}</span>
+            <span class="alias-note-value"${overflowTooltipAttr(item.note || '-')}>${esc(item.note || '-')}</span>
           </div>
           <div class="alias-group-col alias-group-actions" data-label="">
             <button type="button" class="pricing-mini-btn" data-alias-action="edit" data-alias="${esc(item.alias)}">${esc(t('edit'))}</button>
@@ -514,12 +519,12 @@ function renderAliasCandidateMap(rawNames, canonicalModel) {
   const extra = Math.max(0, rawNames.length - visible.length);
   const hasMore = extra > 0 ? ' data-has-more' : '';
   const sources = visible.length > 0
-    ? visible.map(raw => `<span class="alias-candidate-chip" title="${esc(raw)}">${esc(raw)}</span>`).join('')
+    ? visible.map(raw => `<span class="alias-candidate-chip"${overflowTooltipAttr(raw)}>${esc(raw)}</span>`).join('')
     : `<span class="alias-candidate-chip">-</span>`;
   return `<span class="alias-candidate-map">
     <span class="alias-candidate-source-list"${hasMore}>${sources}${extra ? `<span class="alias-candidate-chip alias-candidate-more">${esc(tf('moreAliases', { count: fmt(extra) }))}</span>` : ''}</span>
     <span class="alias-candidate-arrow">${esc(t('mapsTo'))}</span>
-    <span class="alias-candidate-chip alias-candidate-chip-target" title="${esc(canonicalModel || '-')}">${esc(canonicalModel || '-')}</span>
+    <span class="alias-candidate-chip alias-candidate-chip-target"${overflowTooltipAttr(canonicalModel || '-')}>${esc(canonicalModel || '-')}</span>
   </span>`;
 }
 
@@ -536,7 +541,7 @@ function renderAliasCandidates() {
   if (count) {
     const pendingLabel = tf('pendingAliasCount', { count: fmt(pendingTotal) });
     count.textContent = fmt(pendingTotal);
-    count.title = pendingLabel;
+    count.removeAttribute('title');
     count.setAttribute('aria-label', pendingLabel);
   }
   if (items.length === 0) {
@@ -570,12 +575,12 @@ function renderAliasCandidates() {
       const usedRow = String(variant.model || '').trim() === String(item.canonical_model || '').trim();
       return `<div class="alias-candidate-row">
       <div class="alias-candidate-col" data-label="${esc(t('rawAlias'))}">
-        <div class="pricing-model-name alias-model-name" title="${esc(variant.raw_model)}">${esc(variant.raw_model)}</div>
+        <div class="pricing-model-name alias-model-name"${overflowTooltipAttr(variant.raw_model)}>${esc(variant.raw_model)}</div>
       </div>
       <div class="alias-candidate-col alias-candidate-col-suggest" data-label="${esc(t('canonicalTarget'))}">
         <div class="alias-candidate-suggest-wrap">
           <span class="alias-candidate-arrow">${esc(t('canonicalTarget'))}</span>
-          <span class="alias-candidate-chip" title="${esc(item.canonical_model)}">${esc(item.canonical_model)}</span>
+          <span class="alias-candidate-chip"${overflowTooltipAttr(item.canonical_model)}>${esc(item.canonical_model)}</span>
         </div>
       </div>
       <div class="alias-candidate-col" data-label="${esc(t('source'))}">
@@ -587,7 +592,7 @@ function renderAliasCandidates() {
       <div class="alias-candidate-col alias-candidate-col-suggest" data-label="${esc(t('currentModel'))}">
         <div class="alias-candidate-suggest-wrap">
           <span class="alias-candidate-arrow">${esc(t('currentModel'))}</span>
-          <span class="alias-candidate-chip" title="${esc(variant.model)}">${esc(variant.model)}</span>
+          <span class="alias-candidate-chip"${overflowTooltipAttr(variant.model)}>${esc(variant.model)}</span>
         </div>
       </div>
       <div class="alias-candidate-col alias-candidate-col-center" data-label="${esc(t('status'))}">

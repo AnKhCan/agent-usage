@@ -318,33 +318,21 @@ select.enhanced-native-select {
 .trend-compare-chip-label {
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.trend-compare-chip[data-tooltip]::before,
-.trend-compare-chip[data-tooltip]::after {
-  position: absolute; right: 0; opacity: 0; pointer-events: none;
-  transform: translateY(-3px); transition: opacity 0.16s ease, transform 0.16s ease;
-}
-.trend-compare-chip[data-tooltip]::before {
-  content: attr(data-tooltip); top: calc(100% + 9px); z-index: 40;
-  width: max-content; max-width: min(300px, 72vw); padding: 9px 10px;
+.app-tooltip {
+  position: fixed; z-index: 9999; max-width: min(300px, 72vw); padding: 9px 10px;
   border-radius: 8px; color: var(--text); font-size: 12px; font-weight: 650; line-height: 1.4;
   white-space: normal; text-align: left; background: var(--tooltip-bg); border: 1px solid var(--tooltip-border);
   box-shadow: 0 16px 44px rgba(0,0,0,0.28); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  pointer-events: none; opacity: 0; transform: translateY(-3px);
+  transition: opacity 0.16s ease, transform 0.16s ease;
 }
-.trend-compare-chip[data-tooltip]::after {
-  content: ''; top: calc(100% + 4px); z-index: 41; width: 9px; height: 9px; right: 11px;
-  background: var(--tooltip-bg); border-left: 1px solid var(--tooltip-border); border-top: 1px solid var(--tooltip-border);
-  transform: translateY(-3px) rotate(45deg);
+.app-tooltip::after {
+  content: ''; position: absolute; top: -5px; left: var(--tooltip-arrow-left, 18px);
+  width: 9px; height: 9px; background: var(--tooltip-bg);
+  border-left: 1px solid var(--tooltip-border); border-top: 1px solid var(--tooltip-border);
+  transform: translateX(-50%) rotate(45deg);
 }
-.trend-compare-chip[data-tooltip]:hover::before,
-.trend-compare-chip[data-tooltip]:hover::after,
-.trend-compare-chip[data-tooltip]:focus-visible::before,
-.trend-compare-chip[data-tooltip]:focus-visible::after {
-  opacity: 1; transform: translateY(0);
-}
-.trend-compare-chip[data-tooltip]:hover::after,
-.trend-compare-chip[data-tooltip]:focus-visible::after {
-  transform: translateY(0) rotate(45deg);
-}
+.app-tooltip:not([hidden]) { opacity: 1; transform: translateY(0); }
 .trend-compare-chip[hidden] { display: none; }
 .trend-mover-kicker {
   flex: 0 0 auto; color: var(--trend-card-accent); font-size: 11px; font-weight: 800;
@@ -679,7 +667,7 @@ body.models-mode .top-bar { display: none; }
 .pricing-status-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
 .pricing-config-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .pricing-config-grid:empty { display: none; }
-.pricing-config-grid .pricing-status-value { white-space: normal; word-break: break-all; }
+.pricing-config-grid .pricing-status-value { white-space: normal; word-break: break-all; overflow: visible; }
 .pricing-config-grid .pricing-status-value a { color: var(--accent); text-decoration: none; word-break: break-all; }
 .pricing-config-grid .pricing-status-value a:hover { text-decoration: underline; }
 .pricing-status-item {
@@ -689,7 +677,7 @@ body.models-mode .top-bar { display: none; }
 .pricing-status-label { color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
 .pricing-status-value {
   margin-top: 6px; color: var(--text); font-size: 13px; font-weight: 650;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .pricing-status-value.warning { color: var(--orange); }
 .pricing-kicker, .alias-editor .pricing-kicker { display: none; }
