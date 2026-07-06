@@ -334,9 +334,10 @@ async function refresh() {
   $('global-loader').classList.add('loading');
 
   try {
-    let [stats, costModel, costTime, tokensTime, projectOptions, sessions, trendCompare] = await Promise.all([
+    let [stats, modelOptions, costModel, costTime, tokensTime, projectOptions, sessions, trendCompare] = await Promise.all([
       api('stats'),
       api('cost-by-model', {skipModel: true}),
+      api('cost-by-model'),
       api('cost-over-time'),
       api('tokens-over-time'),
       api('project-options'),
@@ -345,7 +346,7 @@ async function refresh() {
     ]);
 
     // Update model filter dropdown from cost-by-model results
-    updateModelFilter(costModel || []);
+    updateModelFilter(modelOptions || []);
     if (renderProjectFilterOptions(projectOptions || [])) {
       sessions = await api('sessions-page', { params: sessionQueryParams() });
     }

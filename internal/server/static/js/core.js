@@ -224,7 +224,8 @@ const I18N = {
     manualPrice: 'Manual Price', inputPrice: 'Input ($/1M)', outputPrice: 'Output ($/1M)', cacheReadPrice: 'Cache Read ($/1M)', cacheCreatePrice: 'Cache Write ($/1M)', note: 'Note', cancel: 'Cancel', savePrice: 'Save Price',
     missingPrices: 'Missing Prices', manualOverrides: 'Manual Overrides', setPrice: 'Set Price', edit: 'Edit', delete: 'Delete', noMissingPrices: 'No missing model prices.', noOverrides: 'No manual overrides.',
     sourceURL: 'Source URL', cachePath: 'Cache File', lastSync: 'Last Sync', lastDownload: 'Last Download', status: 'Status', never: 'Never', ok: 'OK', syncedModels: 'Synced Models', missing: 'Missing', overrides: 'Overrides', saved: 'Saved', syncFailed: 'Sync failed', saveFailed: 'Save failed', deleteFailed: 'Delete failed',
-    manualAlias: 'Manual Alias', newAlias: 'New Alias', editAlias: 'Edit Alias', rawAlias: 'Raw model / alias', usageStats: 'Usage', canonicalModel: 'Canonical model', canonicalTarget: 'Suggested', candidateSources: 'Suggested aliases', mapsTo: 'maps to', moreAliases: '+{count} more', pendingAliasCount: '{count} pending aliases', saveAlias: 'Save Alias', noAliases: 'No aliases configured.', noAliasSearchResults: 'No aliases match this search.', aliasSearchPlaceholder: 'Search models or aliases', aliasGroupMeta: '{count} aliases', uncategorizedModel: 'Uncategorized', toggleAliasGroup: 'Expand or collapse aliases for {model}', aliasCandidates: 'Candidates', noAliasCandidates: 'No alias candidates.', currentModel: 'Current', pendingAlias: 'Pending', usedAlias: 'Used', pendingAliases: '{count} pending', allAliasesUsed: 'All used', toggleCandidate: 'Expand or collapse {model}', applyGroup: 'Apply {count}', applyGroupConfirm: 'Apply {count} aliases to {model}?', use: 'Use', manualAliasSource: 'Manual', configAliasSource: 'Config', aliasRequired: 'Alias and canonical model are required.'
+    manualAlias: 'Manual Alias', newAlias: 'New Alias', editAlias: 'Edit Alias', rawAlias: 'Raw model / alias', usageStats: 'Usage', canonicalModel: 'Canonical model', canonicalTarget: 'Suggested', candidateSources: 'Suggested aliases', mapsTo: 'maps to', moreAliases: '+{count} more', pendingAliasCount: '{count} pending aliases', saveAlias: 'Save Alias', noAliases: 'No aliases configured.', noAliasSearchResults: 'No aliases match this search.', aliasSearchPlaceholder: 'Search models or aliases', aliasGroupMeta: '{count} aliases', uncategorizedModel: 'Uncategorized', toggleAliasGroup: 'Expand or collapse aliases for {model}', aliasCandidates: 'Candidates', noAliasCandidates: 'No alias candidates.', currentModel: 'Current', pendingAlias: 'Pending', usedAlias: 'Used', pendingAliases: '{count} pending', allAliasesUsed: 'All used', toggleCandidate: 'Expand or collapse {model}', applyGroup: 'Apply {count}', applyGroupConfirm: 'Apply {count} aliases to {model}?', use: 'Use', manualAliasSource: 'Manual', configAliasSource: 'Config', aliasRequired: 'Alias and canonical model are required.',
+    allModels: 'All Models', selectedModels: '{count} models selected', modelSearchPlaceholder: 'Search models', selectAll: 'Select All', clear: 'Clear', noModelSearchResults: 'No models match this search.'
   },
   zh: {
     title: '使用分析', to: '至', totalCost: '总费用', totalTokens: '总 Tokens',
@@ -246,7 +247,8 @@ const I18N = {
     manualPrice: '手动价格', inputPrice: '输入', outputPrice: '输出', cacheReadPrice: '缓存读取', cacheCreatePrice: '缓存写入', note: '备注', cancel: '取消', savePrice: '保存价格',
     missingPrices: '缺失价格', manualOverrides: '手动覆盖', setPrice: '设置价格', edit: '编辑', delete: '删除', noMissingPrices: '暂无缺失价格的模型。', noOverrides: '暂无手动覆盖。',
     sourceURL: '来源地址', cachePath: '缓存文件', lastSync: '最近同步', lastDownload: '最近下载', status: '状态', never: '从未', ok: '正常', syncedModels: '已同步模型', missing: '缺失', overrides: '覆盖', saved: '已保存', syncFailed: '同步失败', saveFailed: '保存失败', deleteFailed: '删除失败',
-    manualAlias: '手动别名', newAlias: '新增别名', editAlias: '编辑别名', rawAlias: '原始模型 / 别名', usageStats: '用量', canonicalModel: '规范模型', canonicalTarget: '建议映射', candidateSources: '建议别名', mapsTo: '映射到', moreAliases: '+{count} 项', pendingAliasCount: '{count} 个待处理别名', saveAlias: '保存别名', noAliases: '暂无模型别名。', noAliasSearchResults: '没有匹配的别名。', aliasSearchPlaceholder: '搜索模型或别名', aliasGroupMeta: '{count} 个别名', uncategorizedModel: '未归类', toggleAliasGroup: '展开或收起 {model} 的别名', aliasCandidates: '候选', noAliasCandidates: '暂无疑似别名候选。', currentModel: '当前映射', pendingAlias: '待处理', usedAlias: '已使用', pendingAliases: '待处理 {count} 项', allAliasesUsed: '已全部使用', toggleCandidate: '展开或收起 {model}', applyGroup: '应用 {count} 项', applyGroupConfirm: '将 {count} 个别名应用到 {model}？', use: '使用', manualAliasSource: '手动', configAliasSource: '配置', aliasRequired: '别名和规范模型不能为空。'
+    manualAlias: '手动别名', newAlias: '新增别名', editAlias: '编辑别名', rawAlias: '原始模型 / 别名', usageStats: '用量', canonicalModel: '规范模型', canonicalTarget: '建议映射', candidateSources: '建议别名', mapsTo: '映射到', moreAliases: '+{count} 项', pendingAliasCount: '{count} 个待处理别名', saveAlias: '保存别名', noAliases: '暂无模型别名。', noAliasSearchResults: '没有匹配的别名。', aliasSearchPlaceholder: '搜索模型或别名', aliasGroupMeta: '{count} 个别名', uncategorizedModel: '未归类', toggleAliasGroup: '展开或收起 {model} 的别名', aliasCandidates: '候选', noAliasCandidates: '暂无疑似别名候选。', currentModel: '当前映射', pendingAlias: '待处理', usedAlias: '已使用', pendingAliases: '待处理 {count} 项', allAliasesUsed: '已全部使用', toggleCandidate: '展开或收起 {model}', applyGroup: '应用 {count} 项', applyGroupConfirm: '将 {count} 个别名应用到 {model}？', use: '使用', manualAliasSource: '手动', configAliasSource: '配置', aliasRequired: '别名和规范模型不能为空。',
+    allModels: '全部模型', selectedModels: '已选 {count} 个模型', modelSearchPlaceholder: '搜索模型', selectAll: '全选', clear: '清空', noModelSearchResults: '没有匹配的模型。'
   }
 };
 
@@ -262,6 +264,19 @@ const COMPARE_REGION_ANIMATION_MS = 340;
 const initialCompareMode = localStorage.getItem('au-compareEnabled') === 'false'
   ? 'off'
   : (localStorage.getItem('au-compareMode') || 'elapsed');
+const initialModels = (() => {
+  const rawModels = localStorage.getItem('au-models');
+  if (rawModels) {
+    try {
+      const parsed = JSON.parse(rawModels);
+      if (Array.isArray(parsed)) {
+        return parsed.map(v => String(v || '').trim()).filter(Boolean);
+      }
+    } catch (_) {}
+  }
+  const legacyModel = localStorage.getItem('au-model');
+  return legacyModel ? [legacyModel] : [];
+})();
 
 let state = {
   lang: localStorage.getItem('au-lang') || (navigator.language.includes('zh') ? 'zh' : 'en'),
@@ -274,7 +289,7 @@ let state = {
   customFrom: localStorage.getItem('au-customFrom') || '',
   customTo: localStorage.getItem('au-customTo') || '',
   source: localStorage.getItem('au-source') || '',
-  model: localStorage.getItem('au-model') || '',
+  models: initialModels,
   project: localStorage.getItem('au-project') || '',
 };
 
@@ -291,6 +306,9 @@ let isFetching = false;
 let trendCompareHideTimer = null;
 let projectFilterTimer = null;
 let projectOptionsCache = [];
+let modelOptionsCache = [];
+let modelFilterOpen = false;
+let modelFilterQuery = '';
 let datePicker = {
   open: false,
   viewMonth: null,
@@ -306,11 +324,26 @@ function eventIncludesElement(e, el) {
   return el.contains(e.target);
 }
 
-const ENHANCED_SELECT_IDS = ['sel-granularity', 'sel-compare-mode', 'filter-source', 'filter-model', 'filter-project', 'sel-refresh-interval', 'sel-theme', 'sel-lang', 'models-sel-theme', 'models-sel-lang'];
+const ENHANCED_SELECT_IDS = ['sel-granularity', 'sel-compare-mode', 'filter-source', 'filter-project', 'sel-refresh-interval', 'sel-theme', 'sel-lang', 'models-sel-theme', 'models-sel-lang'];
 const customSelects = new Map();
 
 function t(key) { return (I18N[state.lang] || I18N.en)[key] || key; }
 function persist(key, val) { state[key] = val; localStorage.setItem('au-' + key, val); }
+function tf(key, vars = {}) {
+  return t(key).replace(/\{(\w+)\}/g, (_, name) => Object.prototype.hasOwnProperty.call(vars, name) ? vars[name] : '');
+}
+function persistModels(models) {
+  const seen = new Set();
+  state.models = (Array.isArray(models) ? models : [])
+    .map(v => String(v || '').trim())
+    .filter(v => {
+      if (!v || seen.has(v)) return false;
+      seen.add(v);
+      return true;
+    });
+  localStorage.setItem('au-models', JSON.stringify(state.models));
+  localStorage.setItem('au-model', state.models.length === 1 ? state.models[0] : '');
+}
 function isCompareEnabled() { return state.compareMode !== 'off'; }
 
 function sameRange(a, b) {
@@ -429,7 +462,9 @@ async function api(path, opts) {
   if (state.granularity) q.set('granularity', state.granularity);
   if (isCompareEnabled()) q.set('compare_mode', state.compareMode);
   if (state.source) q.set('source', state.source);
-  if (state.model && !(opts && opts.skipModel)) q.set('model', state.model);
+  if (!(opts && opts.skipModel)) {
+    (state.models || []).forEach(model => q.append('model', model));
+  }
   q.set('tz_offset', new Date().getTimezoneOffset());
   if (opts && opts.params) {
     Object.entries(opts.params).forEach(([key, value]) => {

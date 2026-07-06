@@ -102,6 +102,62 @@ func TestMergeTrendBreakdownsSkipsZeroCostChanges(t *testing.T) {
 	}
 }
 
+func TestStatsAcceptsMultipleModelParams(t *testing.T) {
+	db := tempServerDB(t)
+	ts := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	records := []*storage.UsageRecord{
+		{Source: "claude", SessionID: "s1", Model: "model-a", InputTokens: 100, OutputTokens: 10, CostUSD: 1, Timestamp: ts},
+		{Source: "claude", SessionID: "s2", Model: "model-b", InputTokens: 200, OutputTokens: 20, CostUSD: 2, Timestamp: ts.Add(time.Second)},
+		{Source: "claude", SessionID: "s3", Model: "model-c", InputTokens: 300, OutputTokens: 30, CostUSD: 4, Timestamp: ts.Add(2 * time.Second)},
+	}
+	if err := db.InsertUsageBatch(records); err != nil {
+		t.Fatalf("InsertUsageBatch: %v", err)
+	}
+
+	s := &Server{db: db}
+	req := httptest.NewRequest(http.MethodGet, "/api/stats?from=2025-01-01&to=2025-01-01&model=model-a&model=model-b", nil)
+	rec := httptest.NewRecorder()
+	s.handleStats(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("handleStats status %d: %s", rec.Code, rec.Body.String())
+	}
+	var stats storage.DashboardStats
+	if err := json.Unmarshal(rec.Body.Bytes(), &stats); err != nil {
+		t.Fatalf("decode stats: %v", err)
+	}
+	if stats.TotalCost != 3 || stats.TotalCalls != 2 || stats.TotalTokens != 330 {
+		t.Fatalf("unexpected multi-model stats: %+v", stats)
+	}
+}
+
+func TestCostByModelAcceptsCommaSeparatedModelsParam(t *testing.T) {
+	db := tempServerDB(t)
+	ts := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	records := []*storage.UsageRecord{
+		{Source: "claude", SessionID: "s1", Model: "model-a", CostUSD: 1, Timestamp: ts},
+		{Source: "claude", SessionID: "s2", Model: "model-b", CostUSD: 2, Timestamp: ts.Add(time.Second)},
+		{Source: "claude", SessionID: "s3", Model: "model-c", CostUSD: 4, Timestamp: ts.Add(2 * time.Second)},
+	}
+	if err := db.InsertUsageBatch(records); err != nil {
+		t.Fatalf("InsertUsageBatch: %v", err)
+	}
+
+	s := &Server{db: db}
+	req := httptest.NewRequest(http.MethodGet, "/api/cost-by-model?from=2025-01-01&to=2025-01-01&models=model-a,model-c", nil)
+	rec := httptest.NewRecorder()
+	s.handleCostByModel(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("handleCostByModel status %d: %s", rec.Code, rec.Body.String())
+	}
+	var data []storage.CostByModel
+	if err := json.Unmarshal(rec.Body.Bytes(), &data); err != nil {
+		t.Fatalf("decode cost-by-model: %v", err)
+	}
+	if len(data) != 2 || data[0].Model != "model-c" || data[1].Model != "model-a" {
+		t.Fatalf("unexpected filtered models: %+v", data)
+	}
+}
+
 func requestTrendCompare(t *testing.T, s *Server, date string, tzOffset int, mode string) trendCompareResponse {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, "/api/trends/compare?from="+date+"&to="+date+"&tz_offset="+strconv.Itoa(tzOffset)+"&compare_mode="+mode, nil)

@@ -84,44 +84,44 @@ func (s *Server) handleTrendCompare(w http.ResponseWriter, r *http.Request) {
 
 	granularity := normalizeTrendGranularity(r.URL.Query().Get("granularity"))
 	source := r.URL.Query().Get("source")
-	model := r.URL.Query().Get("model")
+	models := modelQueryValues(r)
 
-	currentStats, err := s.db.GetDashboardStats(from, to, source, model)
+	currentStats, err := s.db.GetDashboardStatsForModels(from, to, source, models)
 	if err != nil {
 		serverError(w, err)
 		return
 	}
-	previousStats, err := s.db.GetDashboardStats(compareFrom, compareTo, source, model)
+	previousStats, err := s.db.GetDashboardStatsForModels(compareFrom, compareTo, source, models)
 	if err != nil {
 		serverError(w, err)
 		return
 	}
-	currentSeries, err := s.db.GetTrendSeries(from, to, granularity, source, model, tzOffset)
+	currentSeries, err := s.db.GetTrendSeriesForModels(from, to, granularity, source, models, tzOffset)
 	if err != nil {
 		serverError(w, err)
 		return
 	}
-	previousSeries, err := s.db.GetTrendSeries(compareFrom, compareTo, granularity, source, model, tzOffset)
+	previousSeries, err := s.db.GetTrendSeriesForModels(compareFrom, compareTo, granularity, source, models, tzOffset)
 	if err != nil {
 		serverError(w, err)
 		return
 	}
-	currentModels, err := s.db.GetTrendBreakdown(from, to, source, model, "model")
+	currentModels, err := s.db.GetTrendBreakdownForModels(from, to, source, models, "model")
 	if err != nil {
 		serverError(w, err)
 		return
 	}
-	previousModels, err := s.db.GetTrendBreakdown(compareFrom, compareTo, source, model, "model")
+	previousModels, err := s.db.GetTrendBreakdownForModels(compareFrom, compareTo, source, models, "model")
 	if err != nil {
 		serverError(w, err)
 		return
 	}
-	currentSources, err := s.db.GetTrendBreakdown(from, to, source, model, "source")
+	currentSources, err := s.db.GetTrendBreakdownForModels(from, to, source, models, "source")
 	if err != nil {
 		serverError(w, err)
 		return
 	}
-	previousSources, err := s.db.GetTrendBreakdown(compareFrom, compareTo, source, model, "source")
+	previousSources, err := s.db.GetTrendBreakdownForModels(compareFrom, compareTo, source, models, "source")
 	if err != nil {
 		serverError(w, err)
 		return

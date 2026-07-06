@@ -67,6 +67,7 @@ func TestStaticTooltipStyleContract(t *testing.T) {
 	for _, want := range []string{
 		".app-tooltip {",
 		"position: fixed; z-index: 9999;",
+		"box-sizing: border-box; overflow-wrap: anywhere;",
 		"pointer-events: none; opacity: 0; transform: translateY(-3px);",
 		".app-tooltip::after {",
 		"left: var(--tooltip-arrow-left, 18px);",

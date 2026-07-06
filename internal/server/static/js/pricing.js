@@ -466,7 +466,7 @@ function renderAliases() {
 function aliasCandidatePendingVariants(item) {
   const canonical = String((item && item.canonical_model) || '').trim();
   if (!canonical) return [];
-  return (item.variants || []).filter(variant => String(variant.model || '').trim() !== canonical);
+  return (item.variants || []).filter(variant => !variant.alias_configured && String(variant.model || '').trim() !== canonical);
 }
 
 function aliasCandidateUsedVariants(item) {
@@ -475,7 +475,7 @@ function aliasCandidateUsedVariants(item) {
   return (item.variants || []).filter(variant => {
     const raw = String(variant.raw_model || '').trim();
     const model = String(variant.model || '').trim();
-    return raw && raw !== canonical && model === canonical;
+    return raw && raw !== canonical && (variant.alias_configured || model === canonical);
   });
 }
 
@@ -572,7 +572,7 @@ function renderAliasCandidates() {
       </div>
     </div>
     <div class="alias-candidate-rows" id="${esc(panelID)}" ${expanded ? '' : 'hidden'}><div class="alias-candidate-rows-inner">${rows.map(variant => {
-      const usedRow = String(variant.model || '').trim() === String(item.canonical_model || '').trim();
+      const usedRow = !!variant.alias_configured || String(variant.model || '').trim() === String(item.canonical_model || '').trim();
       return `<div class="alias-candidate-row">
       <div class="alias-candidate-col" data-label="${esc(t('rawAlias'))}">
         <div class="pricing-model-name alias-model-name"${overflowTooltipAttr(variant.raw_model)}>${esc(variant.raw_model)}</div>

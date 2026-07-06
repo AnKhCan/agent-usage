@@ -31,7 +31,7 @@ func countPendingAliasCandidates(candidates []storage.ModelAliasCandidate) int {
 			continue
 		}
 		for _, variant := range candidate.Variants {
-			if strings.TrimSpace(variant.Model) != canonical {
+			if !variant.AliasConfigured && strings.TrimSpace(variant.Model) != canonical {
 				count++
 				break
 			}

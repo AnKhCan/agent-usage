@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/briqt/agent-usage/internal/pricing"
@@ -132,6 +133,25 @@ func positiveIntQuery(r *http.Request, name string, defaultValue int) (int, erro
 	return n, nil
 }
 
+func modelQueryValues(r *http.Request) []string {
+	query := r.URL.Query()
+	seen := map[string]bool{}
+	var models []string
+	for _, key := range []string{"model", "models"} {
+		for _, value := range query[key] {
+			for _, part := range strings.Split(value, ",") {
+				model := strings.TrimSpace(part)
+				if model == "" || seen[model] {
+					continue
+				}
+				seen[model] = true
+				models = append(models, model)
+			}
+		}
+	}
+	return models
+}
+
 func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	from, to, _, err := s.parseTimeRange(r)
 	if err != nil {
@@ -139,8 +159,8 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	source := r.URL.Query().Get("source")
-	model := r.URL.Query().Get("model")
-	stats, err := s.db.GetDashboardStats(from, to, source, model)
+	models := modelQueryValues(r)
+	stats, err := s.db.GetDashboardStatsForModels(from, to, source, models)
 	if err != nil {
 		serverError(w, err)
 		return
@@ -155,7 +175,8 @@ func (s *Server) handleCostByModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	source := r.URL.Query().Get("source")
-	data, err := s.db.GetCostByModel(from, to, source)
+	models := modelQueryValues(r)
+	data, err := s.db.GetCostByModelForModels(from, to, source, models)
 	if err != nil {
 		serverError(w, err)
 		return
@@ -171,8 +192,8 @@ func (s *Server) handleCostOverTime(w http.ResponseWriter, r *http.Request) {
 	}
 	granularity := r.URL.Query().Get("granularity")
 	source := r.URL.Query().Get("source")
-	model := r.URL.Query().Get("model")
-	data, err := s.db.GetCostOverTime(from, to, granularity, source, model, tzOffset)
+	models := modelQueryValues(r)
+	data, err := s.db.GetCostOverTimeForModels(from, to, granularity, source, models, tzOffset)
 	if err != nil {
 		serverError(w, err)
 		return
@@ -188,8 +209,8 @@ func (s *Server) handleTokensOverTime(w http.ResponseWriter, r *http.Request) {
 	}
 	granularity := r.URL.Query().Get("granularity")
 	source := r.URL.Query().Get("source")
-	model := r.URL.Query().Get("model")
-	data, err := s.db.GetTokensOverTime(from, to, granularity, source, model, tzOffset)
+	models := modelQueryValues(r)
+	data, err := s.db.GetTokensOverTimeForModels(from, to, granularity, source, models, tzOffset)
 	if err != nil {
 		serverError(w, err)
 		return
@@ -204,8 +225,8 @@ func (s *Server) handleProjectOptions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	source := r.URL.Query().Get("source")
-	model := r.URL.Query().Get("model")
-	data, err := s.db.GetProjectOptions(from, to, source, model)
+	models := modelQueryValues(r)
+	data, err := s.db.GetProjectOptionsForModels(from, to, source, models)
 	if err != nil {
 		serverError(w, err)
 		return
@@ -220,8 +241,8 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	source := r.URL.Query().Get("source")
-	model := r.URL.Query().Get("model")
-	data, err := s.db.GetSessions(from, to, source, model)
+	models := modelQueryValues(r)
+	data, err := s.db.GetSessionsForModels(from, to, source, models)
 	if err != nil {
 		serverError(w, err)
 		return
@@ -246,11 +267,11 @@ func (s *Server) handleSessionsPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	source := r.URL.Query().Get("source")
-	model := r.URL.Query().Get("model")
+	models := modelQueryValues(r)
 	project := r.URL.Query().Get("project")
 	sort := r.URL.Query().Get("sort")
 	dir := r.URL.Query().Get("dir")
-	data, err := s.db.GetSessionsPage(from, to, source, model, project, sort, dir, page, pageSize)
+	data, err := s.db.GetSessionsPageForModels(from, to, source, models, project, sort, dir, page, pageSize)
 	if err != nil {
 		serverError(w, err)
 		return

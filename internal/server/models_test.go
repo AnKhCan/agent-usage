@@ -41,6 +41,45 @@ func TestModelsStatusCountsBadgeInputs(t *testing.T) {
 	}
 }
 
+func TestModelsStatusIgnoresConfiguredManualAliasCandidate(t *testing.T) {
+	db := tempServerDB(t)
+	ts := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	records := []*storage.UsageRecord{
+		{Source: "codex", SessionID: "s1", Model: "glm-5.1", InputTokens: 100, OutputTokens: 50, Timestamp: ts},
+		{Source: "codex", SessionID: "s2", Model: "zai-org/GLM-5.1", InputTokens: 200, OutputTokens: 50, Timestamp: ts.Add(time.Second)},
+	}
+	if err := db.InsertUsageBatch(records); err != nil {
+		t.Fatalf("InsertUsageBatch: %v", err)
+	}
+	if err := db.UpsertModelAlias(storage.ModelAlias{Alias: "zai-org/GLM-5.1", CanonicalModel: "custom-glm"}); err != nil {
+		t.Fatalf("UpsertModelAlias: %v", err)
+	}
+	if err := db.ApplyModelAliasesForRawModels([]string{"zai-org/GLM-5.1"}); err != nil {
+		t.Fatalf("ApplyModelAliasesForRawModels: %v", err)
+	}
+	if err := db.UpsertPricing("glm-5.1", 0.001, 0.002, 0, 0); err != nil {
+		t.Fatalf("UpsertPricing glm-5.1: %v", err)
+	}
+	if err := db.UpsertPricing("custom-glm", 0.001, 0.002, 0, 0); err != nil {
+		t.Fatalf("UpsertPricing custom-glm: %v", err)
+	}
+
+	s := &Server{db: db}
+	req := httptest.NewRequest(http.MethodGet, "/api/models/status", nil)
+	rec := httptest.NewRecorder()
+	s.handleModelsStatus(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp modelsStatusResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.MissingPriceCount != 0 || resp.CandidateCount != 0 || resp.BadgeCount != 0 {
+		t.Fatalf("unexpected status: %+v", resp)
+	}
+}
+
 func TestModelAliasCRUD(t *testing.T) {
 	db := tempServerDB(t)
 	ts := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)

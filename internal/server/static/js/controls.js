@@ -28,13 +28,15 @@ function measureSelectText(select, text) {
 }
 
 function updateModelSelectWidth() {
-  const select = $('filter-model');
-  if (!select) return;
-  const wrap = select.closest('.custom-select-wrap');
+  const wrap = $('filter-model-wrap');
   if (!wrap) return;
-  const maxTextWidth = Array.from(select.options).reduce((max, option) => {
-    return Math.max(max, measureSelectText(select, option.textContent || ''));
-  }, 0);
+  const trigger = $('filter-model-trigger');
+  const canvas = updateModelSelectWidth.canvas || (updateModelSelectWidth.canvas = document.createElement('canvas'));
+  const ctx = canvas.getContext('2d');
+  const cs = getComputedStyle(trigger || document.body);
+  ctx.font = `${cs.fontWeight || 500} ${cs.fontSize || '13px'} ${cs.fontFamily || 'sans-serif'}`;
+  const labels = [t('allModels'), tf('selectedModels', { count: fmt(Math.max(2, (state.models || []).length || 2)) }), ...(modelOptionsCache || [])];
+  const maxTextWidth = labels.reduce((max, label) => Math.max(max, ctx.measureText(label || '').width), 0);
   const width = Math.min(260, Math.max(124, Math.ceil(maxTextWidth + 48)));
   wrap.style.setProperty('--model-select-width', `${width}px`);
 }
@@ -71,6 +73,99 @@ function renderProjectFilterOptions(options = projectOptionsCache) {
   syncCustomSelect(sel);
   updateProjectSelectWidth();
   return prev !== state.project;
+}
+
+// ── Model Multi-select ──
+function modelFilterLabel() {
+  const models = state.models || [];
+  if (models.length === 0) return t('allModels');
+  if (models.length === 1) return models[0];
+  return tf('selectedModels', { count: fmt(models.length) });
+}
+
+function setModelFilterOpen(open) {
+  const wrap = $('filter-model-wrap');
+  const trigger = $('filter-model-trigger');
+  const menu = $('filter-model-menu');
+  if (!wrap || !trigger || !menu) return;
+  modelFilterOpen = !!open;
+  wrap.classList.toggle('open', modelFilterOpen);
+  trigger.setAttribute('aria-expanded', modelFilterOpen ? 'true' : 'false');
+  menu.hidden = !modelFilterOpen;
+  if (modelFilterOpen) {
+    closeCustomSelects();
+    renderModelFilterOptions();
+    const input = $('filter-model-search');
+    if (input) {
+      input.value = modelFilterQuery;
+      requestAnimationFrame(() => input.focus());
+    }
+  }
+}
+
+function closeModelFilter() {
+  setModelFilterOpen(false);
+}
+
+function syncModelFilterLabel() {
+  const label = $('filter-model-label');
+  const trigger = $('filter-model-trigger');
+  const text = modelFilterLabel();
+  if (label) label.textContent = text;
+  if (trigger) {
+    trigger.title = text;
+    trigger.setAttribute('aria-label', text);
+  }
+  updateModelSelectWidth();
+}
+
+function renderModelFilterOptions() {
+  const box = $('filter-model-options');
+  const input = $('filter-model-search');
+  if (!box) return;
+  if (input && input.value !== modelFilterQuery) input.value = modelFilterQuery;
+
+  const selected = new Set(state.models || []);
+  const query = String(modelFilterQuery || '').trim().toLowerCase();
+  const options = (modelOptionsCache || []).filter(model => !query || model.toLowerCase().includes(query));
+  if (options.length === 0) {
+    box.innerHTML = `<div class="model-multiselect-empty">${esc(t('noModelSearchResults'))}</div>`;
+    syncModelFilterLabel();
+    return;
+  }
+
+  box.innerHTML = options.map(model => {
+    const isSelected = selected.has(model);
+    return `<button type="button" class="model-multiselect-option${isSelected ? ' selected' : ''}" role="option" aria-selected="${isSelected ? 'true' : 'false'}" data-model="${esc(model)}">
+      <span class="model-multiselect-option-label">${esc(model)}</span>
+      <svg class="model-multiselect-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m20 6-11 11-5-5"></path></svg>
+    </button>`;
+  }).join('');
+  syncModelFilterLabel();
+}
+
+function toggleModelFilterValue(model) {
+  const selected = new Set(state.models || []);
+  if (selected.has(model)) selected.delete(model);
+  else selected.add(model);
+  persistModels(Array.from(selected));
+  sessionPage = 1;
+  renderModelFilterOptions();
+  refresh();
+}
+
+function selectAllModels() {
+  persistModels(modelOptionsCache || []);
+  sessionPage = 1;
+  renderModelFilterOptions();
+  refresh();
+}
+
+function clearModelFilter() {
+  persistModels([]);
+  sessionPage = 1;
+  renderModelFilterOptions();
+  refresh();
 }
 
 // ── Custom Selects ──
@@ -175,6 +270,7 @@ function enhanceSelect(select) {
   button.addEventListener('click', e => {
     e.stopPropagation();
     const nextOpen = !wrap.classList.contains('open');
+    if (nextOpen) closeModelFilter();
     closeCustomSelects(select.id);
     setCustomSelectOpen(item, nextOpen);
   });
@@ -273,6 +369,7 @@ function buildControls() {
   const SOURCES = [['', 'allSources'], ['claude', 'claudeCode'], ['codex', 'codex'], ['openclaw', 'openClaw'], ['opencode', 'openCode'], ['mimocode', 'mimoCode'], ['kiro', 'kiro'], ['pi', 'pi']];
   $('filter-source').innerHTML = SOURCES.map(([v, k]) => `<option value="${v}" ${state.source === v ? 'selected' : ''}>${t(k)}</option>`).join('');
   renderProjectFilterOptions(projectOptionsCache);
+  renderModelFilterOptions();
 
   renderDatePicker();
   renderCompareModeControl({ animate: false });
@@ -356,19 +453,52 @@ $('calendar-grid').onmouseleave = () => {
 
 $('btn-refresh').onclick = () => { refresh(); applyAutoRefresh(); };
 $('btn-auto-refresh').onclick = () => { persist('autoRefresh', !state.autoRefresh); applyAutoRefresh(); };
-$('filter-source').onchange = e => { persist('source', e.target.value); persist('model', ''); sessionPage = 1; refresh(); };
-$('filter-model').onchange = e => { persist('model', e.target.value); sessionPage = 1; refresh(); };
+$('filter-source').onchange = e => { persist('source', e.target.value); persistModels([]); sessionPage = 1; refresh(); };
 $('filter-project').onchange = e => { persist('project', e.target.value); sessionPage = 1; refreshSessionsOnly(); };
+
+$('filter-model-trigger').onclick = e => {
+  e.stopPropagation();
+  setModelFilterOpen(!modelFilterOpen);
+};
+$('filter-model-search').oninput = e => {
+  modelFilterQuery = e.target.value;
+  renderModelFilterOptions();
+};
+$('filter-model-options').onclick = e => {
+  const option = e.target.closest('.model-multiselect-option');
+  if (!option) return;
+  toggleModelFilterValue(option.dataset.model);
+};
+$('filter-model-all').onclick = e => {
+  e.stopPropagation();
+  selectAllModels();
+};
+$('filter-model-clear').onclick = e => {
+  e.stopPropagation();
+  clearModelFilter();
+};
+$('filter-model-trigger').onkeydown = e => {
+  if (['ArrowDown', 'Enter', ' '].includes(e.key)) {
+    e.preventDefault();
+    setModelFilterOpen(true);
+  }
+};
+$('filter-model-search').onkeydown = e => {
+  if (e.key === 'Escape') {
+    closeModelFilter();
+    $('filter-model-trigger').focus();
+  }
+};
 
 function updateModelFilter(costModel) {
   const models = costModel.map(d => d.model).filter(Boolean);
-  const sel = $('filter-model');
-  const prev = state.model;
-  if (prev && !models.includes(prev)) { persist('model', ''); }
-  sel.innerHTML = `<option value="">All Models</option>` + models.map(m =>
-    `<option value="${esc(m)}" ${state.model === m ? 'selected' : ''}>${esc(m)}</option>`
-  ).join('');
-  syncCustomSelect(sel);
+  const prev = state.models || [];
+  modelOptionsCache = models;
+  const validModels = prev.filter(model => models.includes(model));
+  if (validModels.length !== prev.length) {
+    persistModels(validModels);
+  }
+  renderModelFilterOptions();
   updateModelSelectWidth();
 }
 
@@ -389,6 +519,14 @@ document.addEventListener('keydown', e => {
   }
   if (e.key === 'Escape') {
     closeCustomSelects();
+    closeModelFilter();
+  }
+});
+
+document.addEventListener('click', e => {
+  const wrap = $('filter-model-wrap');
+  if (modelFilterOpen && wrap && !eventIncludesElement(e, wrap)) {
+    closeModelFilter();
   }
 });
 

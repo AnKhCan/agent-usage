@@ -17,10 +17,41 @@ func sourceFilter(source string) (string, []interface{}) {
 
 // modelFilter returns a SQL clause and args for optional model filtering.
 func modelFilter(model string) (string, []interface{}) {
-	if model == "" {
+	return modelsFilter(splitModelFilterValues([]string{model}))
+}
+
+func splitModelFilterValues(values []string) []string {
+	seen := map[string]bool{}
+	var models []string
+	for _, value := range values {
+		for _, part := range strings.Split(value, ",") {
+			model := strings.TrimSpace(part)
+			if model == "" || seen[model] {
+				continue
+			}
+			seen[model] = true
+			models = append(models, model)
+		}
+	}
+	return models
+}
+
+// modelsFilter returns a SQL clause and args for optional model filtering.
+func modelsFilter(models []string) (string, []interface{}) {
+	models = splitModelFilterValues(models)
+	if len(models) == 0 {
 		return "", nil
 	}
-	return " AND model=?", []interface{}{model}
+	if len(models) == 1 {
+		return " AND model=?", []interface{}{models[0]}
+	}
+	placeholders := make([]string, len(models))
+	args := make([]interface{}, len(models))
+	for i, model := range models {
+		placeholders[i] = "?"
+		args[i] = model
+	}
+	return " AND model IN (" + strings.Join(placeholders, ",") + ")", args
 }
 
 // DashboardStats holds aggregate statistics for the dashboard summary cards.
@@ -141,9 +172,15 @@ func canonicalProject(project, cwd string) (key, label string) {
 // GetDashboardStats returns aggregate cost, token, session, and prompt counts
 // for usage records within the given time range.
 func (d *DB) GetDashboardStats(from, to time.Time, source, model string) (*DashboardStats, error) {
+	return d.GetDashboardStatsForModels(from, to, source, splitModelFilterValues([]string{model}))
+}
+
+// GetDashboardStatsForModels returns dashboard aggregate statistics filtered
+// to any of the given models. An empty model list means all models.
+func (d *DB) GetDashboardStatsForModels(from, to time.Time, source string, models []string) (*DashboardStats, error) {
 	s := &DashboardStats{}
 	sf, sa := sourceFilter(source)
-	mf, ma := modelFilter(model)
+	mf, ma := modelsFilter(models)
 	args := append([]interface{}{from, to}, sa...)
 	args = append(args, ma...)
 	filter := sf + mf
@@ -167,10 +204,18 @@ func (d *DB) GetDashboardStats(from, to time.Time, source, model string) (*Dashb
 
 // GetCostByModel returns total cost grouped by model within the given time range.
 func (d *DB) GetCostByModel(from, to time.Time, source string) ([]CostByModel, error) {
+	return d.GetCostByModelForModels(from, to, source, nil)
+}
+
+// GetCostByModelForModels returns total cost grouped by model within the given
+// time range, optionally restricted to a model set.
+func (d *DB) GetCostByModelForModels(from, to time.Time, source string, models []string) ([]CostByModel, error) {
 	sf, sa := sourceFilter(source)
+	mf, ma := modelsFilter(models)
 	args := append([]interface{}{from, to}, sa...)
+	args = append(args, ma...)
 	rows, err := d.db.Query(`SELECT model, SUM(cost_usd) as cost FROM usage_records
-		WHERE timestamp BETWEEN ? AND ?`+sf+` GROUP BY model ORDER BY cost DESC`, args...)
+		WHERE timestamp BETWEEN ? AND ?`+sf+mf+` GROUP BY model ORDER BY cost DESC`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -225,9 +270,15 @@ func granularityExpr(g string, tzOffset int) string {
 
 // GetCostOverTime returns cost per model grouped by the given granularity within the time range.
 func (d *DB) GetCostOverTime(from, to time.Time, granularity, source, model string, tzOffset int) ([]TimeSeriesPoint, error) {
+	return d.GetCostOverTimeForModels(from, to, granularity, source, splitModelFilterValues([]string{model}), tzOffset)
+}
+
+// GetCostOverTimeForModels returns cost per model grouped by the given
+// granularity within the time range, optionally restricted to a model set.
+func (d *DB) GetCostOverTimeForModels(from, to time.Time, granularity, source string, models []string, tzOffset int) ([]TimeSeriesPoint, error) {
 	expr := granularityExpr(granularity, tzOffset)
 	sf, sa := sourceFilter(source)
-	mf, ma := modelFilter(model)
+	mf, ma := modelsFilter(models)
 	args := append([]interface{}{from, to}, sa...)
 	args = append(args, ma...)
 	filter := sf + mf
@@ -254,9 +305,15 @@ func (d *DB) GetCostOverTime(from, to time.Time, granularity, source, model stri
 
 // GetTokensOverTime returns token usage breakdown grouped by the given granularity within the time range.
 func (d *DB) GetTokensOverTime(from, to time.Time, granularity, source, model string, tzOffset int) ([]TokenTimeSeriesPoint, error) {
+	return d.GetTokensOverTimeForModels(from, to, granularity, source, splitModelFilterValues([]string{model}), tzOffset)
+}
+
+// GetTokensOverTimeForModels returns token usage grouped by the given
+// granularity, optionally restricted to a model set.
+func (d *DB) GetTokensOverTimeForModels(from, to time.Time, granularity, source string, models []string, tzOffset int) ([]TokenTimeSeriesPoint, error) {
 	expr := granularityExpr(granularity, tzOffset)
 	sf, sa := sourceFilter(source)
-	mf, ma := modelFilter(model)
+	mf, ma := modelsFilter(models)
 	args := append([]interface{}{from, to}, sa...)
 	args = append(args, ma...)
 	filter := sf + mf
@@ -285,9 +342,15 @@ func (d *DB) GetTokensOverTime(from, to time.Time, granularity, source, model st
 
 // GetTrendSeries returns total cost and token usage grouped by the given granularity.
 func (d *DB) GetTrendSeries(from, to time.Time, granularity, source, model string, tzOffset int) ([]TrendSeriesPoint, error) {
+	return d.GetTrendSeriesForModels(from, to, granularity, source, splitModelFilterValues([]string{model}), tzOffset)
+}
+
+// GetTrendSeriesForModels returns total cost and token usage grouped by the
+// given granularity, optionally restricted to a model set.
+func (d *DB) GetTrendSeriesForModels(from, to time.Time, granularity, source string, models []string, tzOffset int) ([]TrendSeriesPoint, error) {
 	expr := granularityExpr(granularity, tzOffset)
 	sf, sa := sourceFilter(source)
-	mf, ma := modelFilter(model)
+	mf, ma := modelsFilter(models)
 	args := append([]interface{}{from, to}, sa...)
 	args = append(args, ma...)
 	filter := sf + mf
@@ -318,6 +381,12 @@ func (d *DB) GetTrendSeries(from, to time.Time, granularity, source, model strin
 
 // GetTrendBreakdown returns total usage grouped by a safe dimension.
 func (d *DB) GetTrendBreakdown(from, to time.Time, source, model, dimension string) ([]TrendBreakdownValue, error) {
+	return d.GetTrendBreakdownForModels(from, to, source, splitModelFilterValues([]string{model}), dimension)
+}
+
+// GetTrendBreakdownForModels returns total usage grouped by a safe dimension,
+// optionally restricted to a model set.
+func (d *DB) GetTrendBreakdownForModels(from, to time.Time, source string, models []string, dimension string) ([]TrendBreakdownValue, error) {
 	var expr string
 	switch dimension {
 	case "source":
@@ -329,7 +398,7 @@ func (d *DB) GetTrendBreakdown(from, to time.Time, source, model, dimension stri
 	}
 
 	sf, sa := sourceFilter(source)
-	mf, ma := modelFilter(model)
+	mf, ma := modelsFilter(models)
 	args := append([]interface{}{from, to}, sa...)
 	args = append(args, ma...)
 	filter := sf + mf
@@ -360,8 +429,14 @@ func (d *DB) GetTrendBreakdown(from, to time.Time, source, model, dimension stri
 // GetProjectOptions returns canonical project choices for sessions that have
 // usage in the selected time range and global source/model filters.
 func (d *DB) GetProjectOptions(from, to time.Time, source, model string) ([]ProjectOption, error) {
+	return d.GetProjectOptionsForModels(from, to, source, splitModelFilterValues([]string{model}))
+}
+
+// GetProjectOptionsForModels returns canonical project choices for sessions
+// that have usage in the selected time range and global source/model filters.
+func (d *DB) GetProjectOptionsForModels(from, to time.Time, source string, models []string) ([]ProjectOption, error) {
 	sf, sa := sourceFilter(source)
-	mf, ma := modelFilter(model)
+	mf, ma := modelsFilter(models)
 	filter := sf + mf
 	args := append([]interface{}{from, to}, sa...)
 	args = append(args, ma...)
@@ -463,8 +538,14 @@ func (d *DB) GetSessionDetail(sessionID string) ([]SessionDetail, error) {
 
 // GetSessions returns sessions with aggregated cost and token totals within the given time range.
 func (d *DB) GetSessions(from, to time.Time, source, model string) ([]SessionInfo, error) {
+	return d.GetSessionsForModels(from, to, source, splitModelFilterValues([]string{model}))
+}
+
+// GetSessionsForModels returns sessions with aggregated cost and token totals
+// within the given time range, optionally restricted to a model set.
+func (d *DB) GetSessionsForModels(from, to time.Time, source string, models []string) ([]SessionInfo, error) {
 	sf, sa := sourceFilter(source)
-	mf, ma := modelFilter(model)
+	mf, ma := modelsFilter(models)
 	filter := sf + mf
 	baseArgs := append([]interface{}{from, to}, sa...)
 	baseArgs = append(baseArgs, ma...)
@@ -536,14 +617,19 @@ func sessionSortExpr(sort string) string {
 	}
 }
 
-
 // GetSessionsPage returns one page of sessions with server-side project filtering,
 // sorting, and pagination. It preserves GetSessions for compatibility with older API clients.
 func (d *DB) GetSessionsPage(from, to time.Time, source, model, project, sort, dir string, page, pageSize int) (*SessionPage, error) {
+	return d.GetSessionsPageForModels(from, to, source, splitModelFilterValues([]string{model}), project, sort, dir, page, pageSize)
+}
+
+// GetSessionsPageForModels returns one page of sessions with server-side
+// project filtering, sorting, pagination, and optional multi-model filtering.
+func (d *DB) GetSessionsPageForModels(from, to time.Time, source string, models []string, project, sort, dir string, page, pageSize int) (*SessionPage, error) {
 	page, pageSize = normalizePage(page, pageSize)
 
 	sf, sa := sourceFilter(source)
-	mf, ma := modelFilter(model)
+	mf, ma := modelsFilter(models)
 	filter := sf + mf
 	baseArgs := append([]interface{}{from, to}, sa...)
 	baseArgs = append(baseArgs, ma...)

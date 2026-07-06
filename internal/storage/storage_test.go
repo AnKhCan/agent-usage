@@ -561,6 +561,48 @@ func TestModelAliasCandidatesKeepResolvedGroups(t *testing.T) {
 	}
 }
 
+func TestModelAliasCandidatesMarkManualNonSuggestedAliasAsConfigured(t *testing.T) {
+	db := tempDB(t)
+	ts := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	records := []*UsageRecord{
+		{Source: "codex", SessionID: "s1", Model: "glm-5.1", InputTokens: 100, OutputTokens: 50, Timestamp: ts},
+		{Source: "codex", SessionID: "s2", Model: "zai-org/GLM-5.1", InputTokens: 200, OutputTokens: 50, Timestamp: ts.Add(time.Second)},
+	}
+	if err := db.InsertUsageBatch(records); err != nil {
+		t.Fatalf("InsertUsageBatch: %v", err)
+	}
+	if err := db.UpsertModelAlias(ModelAlias{Alias: "zai-org/GLM-5.1", CanonicalModel: "custom-glm"}); err != nil {
+		t.Fatalf("UpsertModelAlias: %v", err)
+	}
+	if err := db.ApplyModelAliasesForRawModels([]string{"zai-org/GLM-5.1"}); err != nil {
+		t.Fatalf("ApplyModelAliasesForRawModels: %v", err)
+	}
+
+	candidates, err := db.GetModelAliasCandidates()
+	if err != nil {
+		t.Fatalf("GetModelAliasCandidates: %v", err)
+	}
+	if len(candidates) != 1 {
+		t.Fatalf("expected one candidate, got %+v", candidates)
+	}
+	var found bool
+	for _, variant := range candidates[0].Variants {
+		if variant.RawModel != "zai-org/GLM-5.1" {
+			continue
+		}
+		found = true
+		if !variant.AliasConfigured {
+			t.Fatalf("expected manual alias variant to be configured: %+v", variant)
+		}
+		if variant.Model != "custom-glm" {
+			t.Fatalf("expected manual canonical custom-glm, got %+v", variant)
+		}
+	}
+	if !found {
+		t.Fatalf("expected provider variant in candidate: %+v", candidates[0].Variants)
+	}
+}
+
 func TestRecalcCosts(t *testing.T) {
 	db := tempDB(t)
 	ts := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)

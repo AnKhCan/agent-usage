@@ -22,13 +22,14 @@ type ModelAlias struct {
 
 // ModelAliasVariant describes one raw model spelling in a duplicate candidate group.
 type ModelAliasVariant struct {
-	RawModel    string `json:"raw_model"`
-	Model       string `json:"model"`
-	Sources     string `json:"sources"`
-	UsageCount  int    `json:"usage_count"`
-	TotalTokens int64  `json:"total_tokens"`
-	FirstSeen   string `json:"first_seen"`
-	LastSeen    string `json:"last_seen"`
+	RawModel        string `json:"raw_model"`
+	Model           string `json:"model"`
+	AliasConfigured bool   `json:"alias_configured"`
+	Sources         string `json:"sources"`
+	UsageCount      int    `json:"usage_count"`
+	TotalTokens     int64  `json:"total_tokens"`
+	FirstSeen       string `json:"first_seen"`
+	LastSeen        string `json:"last_seen"`
 }
 
 // ModelAliasCandidate groups raw model spellings that likely refer to one model.
@@ -502,13 +503,15 @@ func (d *DB) GetModelAliasCandidates() ([]ModelAliasCandidate, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err := d.db.Query(`SELECT COALESCE(NULLIF(raw_model,''), model) as raw, model,
-		GROUP_CONCAT(DISTINCT source), COUNT(*),
-		COALESCE(SUM(input_tokens+cache_read_input_tokens+cache_creation_input_tokens+output_tokens),0),
-		COALESCE(MIN(timestamp),''), COALESCE(MAX(timestamp),'')
-		FROM usage_records
-		WHERE COALESCE(NULLIF(raw_model,''), model) != ''
-		GROUP BY raw, model`)
+	rows, err := d.db.Query(`SELECT COALESCE(NULLIF(ur.raw_model,''), ur.model) as raw, ur.model,
+		CASE WHEN ma.alias IS NULL THEN 0 ELSE 1 END,
+		GROUP_CONCAT(DISTINCT ur.source), COUNT(*),
+		COALESCE(SUM(ur.input_tokens+ur.cache_read_input_tokens+ur.cache_creation_input_tokens+ur.output_tokens),0),
+		COALESCE(MIN(ur.timestamp),''), COALESCE(MAX(ur.timestamp),'')
+		FROM usage_records ur
+		LEFT JOIN model_aliases ma ON ma.alias=COALESCE(NULLIF(ur.raw_model,''), ur.model)
+		WHERE COALESCE(NULLIF(ur.raw_model,''), ur.model) != ''
+		GROUP BY raw, ur.model, ma.alias`)
 	if err != nil {
 		return nil, err
 	}
@@ -517,9 +520,11 @@ func (d *DB) GetModelAliasCandidates() ([]ModelAliasCandidate, error) {
 	groups := make(map[string][]ModelAliasVariant)
 	for rows.Next() {
 		var v ModelAliasVariant
-		if err := rows.Scan(&v.RawModel, &v.Model, &v.Sources, &v.UsageCount, &v.TotalTokens, &v.FirstSeen, &v.LastSeen); err != nil {
+		var aliasConfigured int
+		if err := rows.Scan(&v.RawModel, &v.Model, &aliasConfigured, &v.Sources, &v.UsageCount, &v.TotalTokens, &v.FirstSeen, &v.LastSeen); err != nil {
 			return nil, err
 		}
+		v.AliasConfigured = aliasConfigured != 0
 		key := aliasCandidateKey(v.RawModel)
 		if key == "" {
 			continue
