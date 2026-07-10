@@ -752,7 +752,6 @@ body.models-mode .top-bar { display: none; }
 }
 .models-tab:hover:not(.active) { color: var(--text); }
 .models-tab:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--accent-bg); }
-.models-tab-icon { width: 15px; height: 15px; flex: 0 0 auto; stroke-width: 2.1; }
 .models-tab.active { color: #fff; }
 .models-tab-panel[hidden] { display: none; }
 .pricing-status-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
